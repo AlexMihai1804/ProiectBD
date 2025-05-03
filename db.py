@@ -27,7 +27,7 @@ class Database:
                 `id_customer` integer primary key NOT NULL UNIQUE,
                 `name` TEXT NOT NULL,
                 `surname` TEXT NOT NULL,
-                `usename` TEXT NOT NULL,
+                `username` TEXT NOT NULL,
                 `password` TEXT NOT NULL,
                 `email` TEXT NOT NULL,
                 `address` TEXT NOT NULL DEFAULT 'null',
@@ -146,7 +146,7 @@ class Database:
         return self.cursor.fetchall()
 
     def verify_customer(self, username, password):
-        self.cursor.execute('SELECT * FROM customers WHERE usename=? AND password=?', (username, password))
+        self.cursor.execute('SELECT * FROM customers WHERE username=? AND password=?', (username, password))
         result = self.cursor.fetchone()
         if result:
             return True
