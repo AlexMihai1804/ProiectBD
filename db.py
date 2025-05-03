@@ -112,7 +112,7 @@ class Database:
         ''')
         self.connection.commit()
         
-    def get_users(self):
+    def get_employees(self):
         self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()
     
@@ -122,4 +122,32 @@ class Database:
     
     def get_orders(self):
         self.cursor.execute('SELECT * FROM orders')
+        return self.cursor.fetchall()
+    
+    def get_order_content(self):
+        self.cursor.execute('SELECT * FROM order_content')
+        return self.cursor.fetchall()
+    
+    def get_stock(self):
+        self.cursor.execute('SELECT * FROM stock')
+        return self.cursor.fetchall()
+    
+    def get_partners(self):
+        self.cursor.execute('SELECT * FROM partners')
+        return self.cursor.fetchall()
+    
+    def get_partner_products(self):
+        self.cursor.execute('SELECT * FROM partner_products')
+        return self.cursor.fetchall()
+    
+    def get_partner_orders(self):
+        self.cursor.execute('SELECT * FROM partner_orders')
+        return self.cursor.fetchall()
+    
+    def get_partner_order_content(self):
+        self.cursor.execute('SELECT * FROM partner_order_content')
+        return self.cursor.fetchall()
+    
+    def get_recipes(self):
+        self.cursor.execute('SELECT * FROM recipes')
         return self.cursor.fetchall()
