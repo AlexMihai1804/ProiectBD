@@ -141,3 +141,7 @@ class Database:
             return True
         else:
             return False
+    
+    def get_customers(self):
+        self.cursor.execute('SELECT * FROM customers')
+        return self.cursor.fetchall()
