@@ -1,3 +1,4 @@
+import datetime
 import sqlite3
 
 
@@ -6,6 +7,7 @@ class Database:
         self.connection = sqlite3.connect('data.db')
         self.cursor = self.connection.cursor()
         self.create_table()
+        self.create_triggers()
 
     def create_table(self):
         self.cursor.executescript('''
@@ -113,7 +115,32 @@ class Database:
 );
         ''')
         self.connection.commit()
-        
+
+    def create_triggers(self):
+        self.cursor.executescript('''
+            CREATE TRIGGER IF NOT EXISTS trg_before_insert_order_content
+            BEFORE INSERT ON order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN (SELECT quantity FROM stock WHERE id_product=NEW.id_product)<NEW.quantity THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE stock SET quantity=quantity-NEW.quantity WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_update_order_content
+            BEFORE UPDATE OF quantity ON order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN NEW.quantity>OLD.quantity AND (SELECT quantity FROM stock WHERE id_product=NEW.id_product)<(NEW.quantity-OLD.quantity) THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE stock SET quantity=quantity-(NEW.quantity-OLD.quantity) WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_delete_order_content
+            BEFORE DELETE ON order_content
+            FOR EACH ROW
+            BEGIN
+                UPDATE stock SET quantity=quantity+OLD.quantity WHERE id_product=OLD.id_product;
+            END;
+        ''')
+        self.connection.commit()
+
     def get_employees(self):
         self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()
@@ -141,39 +168,58 @@ class Database:
             return True
         else:
             return False
-    
+
     def get_customers(self):
         self.cursor.execute('SELECT * FROM customers')
         return self.cursor.fetchall()
-    
+
     def get_orders(self):
         self.cursor.execute('SELECT * FROM orders')
         return self.cursor.fetchall()
-    
+
     def get_order_content(self):
         self.cursor.execute('SELECT * FROM order_content')
         return self.cursor.fetchall()
-    
+
     def get_stock(self):
         self.cursor.execute('SELECT * FROM stock')
         return self.cursor.fetchall()
-    
+
     def get_partners(self):
         self.cursor.execute('SELECT * FROM partners')
         return self.cursor.fetchall()
-    
+
     def get_partner_products(self):
         self.cursor.execute('SELECT * FROM partner_products')
         return self.cursor.fetchall()
-    
+
     def get_partner_orders(self):
         self.cursor.execute('SELECT * FROM partner_orders')
         return self.cursor.fetchall()
-    
+
     def get_partner_order_content(self):
         self.cursor.execute('SELECT * FROM partner_order_content')
         return self.cursor.fetchall()
-    
+
     def get_recipes(self):
         self.cursor.execute('SELECT * FROM recipes')
         return self.cursor.fetchall()
+
+    def place_order(self, customer_id, employee_id, item_list):
+        if not item_list:
+            return {'error': 'Empty item list'}
+        with self.connection:
+            now = datetime.utcnow().isoformat(' ')
+            self.cursor.execute('INSERT INTO orders(id_client,data,progress,id_employee) VALUES(?,?,?,?)',
+                                (customer_id, now, 'pending', employee_id))
+            order_id = self.cursor.lastrowid
+            for pid, qty in item_list:
+                if qty <= 0:
+                    return {'error': 'Invalid quantity'}
+                row = self.cursor.execute('SELECT price FROM stock WHERE id_product=?', (pid,)).fetchone()
+                if not row:
+                    return {'error': 'Product not found'}
+                price = row['price']
+                self.cursor.execute('INSERT INTO order_content(id_order,id_product,quantity,price) VALUES(?,?,?,?)',
+                                    (order_id, pid, qty, price))
+        return {'success': True, 'order_id': order_id}
