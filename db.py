@@ -1,5 +1,5 @@
-import datetime
 import sqlite3
+from datetime import datetime
 
 
 class Database:
@@ -205,21 +205,45 @@ class Database:
         self.cursor.execute('SELECT * FROM recipes')
         return self.cursor.fetchall()
 
-    def place_order(self, customer_id, employee_id, item_list):
+    def get_least_busy_employee(self, department):
+        self.cursor.execute("""
+            SELECT e.id
+            FROM employees e
+            LEFT JOIN orders o
+              ON o.id_employee = e.id
+             AND o.progress != 'completed'
+            WHERE e.department IN (?)
+            GROUP BY e.id
+            ORDER BY COUNT(o.id_order) ASC
+            LIMIT 1
+        """, (department,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
+
+    def place_order(self, customer_id, item_list):
         if not item_list:
             return {'error': 'Empty item list'}
+        employee_id = self.get_least_busy_employee('sales')
+        if not employee_id:
+            return {'error': 'No available employee'}
         with self.connection:
             now = datetime.utcnow().isoformat(' ')
-            self.cursor.execute('INSERT INTO orders(id_client,data,progress,id_employee) VALUES(?,?,?,?)',
-                                (customer_id, now, 'pending', employee_id))
+            self.cursor.execute(
+                'INSERT INTO orders(id_client,data,progress,id_employee) VALUES(?,?,?,?)',
+                (customer_id, now, 'pending', employee_id)
+            )
             order_id = self.cursor.lastrowid
             for pid, qty in item_list:
                 if qty <= 0:
                     return {'error': 'Invalid quantity'}
-                row = self.cursor.execute('SELECT price FROM stock WHERE id_product=?', (pid,)).fetchone()
+                row = self.cursor.execute(
+                    'SELECT price FROM stock WHERE id_product=?', (pid,)
+                ).fetchone()
                 if not row:
                     return {'error': 'Product not found'}
                 price = row['price']
-                self.cursor.execute('INSERT INTO order_content(id_order,id_product,quantity,price) VALUES(?,?,?,?)',
-                                    (order_id, pid, qty, price))
+                self.cursor.execute(
+                    'INSERT INTO order_content(id_order,id_product,quantity,price) VALUES(?,?,?,?)',
+                    (order_id, pid, qty, price)
+                )
         return {'success': True, 'order_id': order_id}
