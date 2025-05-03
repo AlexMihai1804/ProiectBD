@@ -1,10 +1,12 @@
 import sqlite3
 
+
 class Database:
     def __init__(self):
         self.connection = sqlite3.connect('data.db')
         self.cursor = self.connection.cursor()
         self.create_table()
+
     def create_table(self):
         self.cursor.executescript('''
             CREATE TABLE IF NOT EXISTS `employees` (
@@ -115,6 +117,30 @@ class Database:
     def get_employees(self):
         self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()
+
+    def verify_customer(self, username, password):
+        self.cursor.execute('SELECT * FROM customers WHERE usename=? AND password=?', (username, password))
+        result = self.cursor.fetchone()
+        if result:
+            return True
+        else:
+            return False
+
+    def verify_employee(self, username, password):
+        self.cursor.execute('SELECT * FROM employees WHERE username=? AND password=?', (username, password))
+        result = self.cursor.fetchone()
+        if result:
+            return True
+        else:
+            return False
+
+    def verify_partner(self, username, password):
+        self.cursor.execute('SELECT * FROM partners WHERE username=? AND password=?', (username, password))
+        result = self.cursor.fetchone()
+        if result:
+            return True
+        else:
+            return False
     
     def get_customers(self):
         self.cursor.execute('SELECT * FROM customers')
