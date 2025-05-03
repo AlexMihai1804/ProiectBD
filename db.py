@@ -111,10 +111,15 @@ class Database:
 );
         ''')
         self.connection.commit()
+        
     def get_users(self):
         self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()
     
     def get_customers(self):
         self.cursor.execute('SELECT * FROM customers')
+        return self.cursor.fetchall()
+    
+    def get_orders(self):
+        self.cursor.execute('SELECT * FROM orders')
         return self.cursor.fetchall()
