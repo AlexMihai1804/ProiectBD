@@ -6,7 +6,7 @@ class Database:
         self.cursor = self.connection.cursor()
         self.create_table()
     def create_table(self):
-        self.cursor.execute('''
+        self.cursor.executescript('''
             CREATE TABLE IF NOT EXISTS `employees` (
                 `id` integer primary key NOT NULL UNIQUE,
                 `name` TEXT NOT NULL,
@@ -112,5 +112,5 @@ class Database:
         ''')
         self.connection.commit()
     def get_users(self):
-        self.cursor.execute('SELECT * FROM users')
+        self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()

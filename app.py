@@ -1,7 +1,7 @@
 from flask import Flask
 from db import Database
 app = Flask(__name__)
-
+database = Database()
 
 @app.route('/')
 def hello_world():  # put application's code here
@@ -9,5 +9,4 @@ def hello_world():  # put application's code here
 
 
 if __name__ == '__main__':
-    database = Database()
     app.run()
