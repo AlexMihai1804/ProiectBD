@@ -14,3 +14,6 @@ class Database:
             )
         ''')
         self.connection.commit()
+    def get_users(self):
+        self.cursor.execute('SELECT * FROM users')
+        return self.cursor.fetchall()
