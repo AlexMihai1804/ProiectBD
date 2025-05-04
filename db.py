@@ -306,3 +306,36 @@ class Database:
                     (pid, order_id, qty, price)
                 )
         return {'success': True, 'order_id': order_id}
+
+    def reset_customer_password(self, username, new_password):
+        self.cursor.execute('SELECT * FROM customers WHERE username = ?', (username,))
+        if not self.cursor.fetchone():
+            return {'error' : 'User not found'}
+    
+        self.cursor.execute('UPDATE customers SET password = ? WHERE username = ?', (new_password, username))
+        self.connection.commit()
+        return {'succes': True}
+    
+    def reset_employee_password(self, username, new_password):
+        self.cursor.execute('SELECT * FROM employees WHERE username = ?', (username,))
+        if not self.cursor.fetchone():
+            return {'error' : 'User not found'}
+    
+        self.cursor.execute('UPDATE employees SET password = ? WHERE username = ?', (new_password, username))
+        self.connection.commit()
+        return {'succes': True}
+    
+    def search_product_by_name(self, name):
+        query = "SELECT * FROM products WHERE LOWER(name) LIKE ?"
+        self.cursor.execute(query, ('%' + name.lower() + '%'))
+        return self.cursor.fetchall()
+    
+    def get_orders_by_customer(self, customer_id):
+        query = "SELECT * FROM orders WHERE customer_id = ?"
+        self.cursor.execute(query, (customer_id,))
+        return self.cursor.fetchall()
+    
+    def get_orders_by_status(self, status):
+        query = "SELECT * FROM orders WHERE status = ?"
+        self.cursor.execute(query, (status,))
+        return self.cursor.fetchall()
