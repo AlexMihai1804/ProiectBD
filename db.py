@@ -177,3 +177,13 @@ class Database:
     def get_recipes(self):
         self.cursor.execute('SELECT * FROM recipes')
         return self.cursor.fetchall()
+
+    def get_order_quantity(self, order_id):
+        self.cursor.execute('SELECT quantity FROM order_content WHERE id_order = ?', (order_id,))
+        result = self.cursor.fetchone()
+        return result[0] if result else 0
+    
+    def get_partner_order_quantity(self, order_id):
+        self.cursor.execute('SELECT quantity FROM partnet_order_content WHERE id_order = ?', (order_id,))
+        result = self.cursor.fetchone()
+        return result[0] if result else 0 
