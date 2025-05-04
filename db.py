@@ -1,11 +1,14 @@
 import sqlite3
+from datetime import datetime
 
 
 class Database:
     def __init__(self):
-        self.connection = sqlite3.connect('data.db')
+        self.connection = sqlite3.connect('data.db', check_same_thread=False)
+        self.connection.row_factory = sqlite3.Row
         self.cursor = self.connection.cursor()
         self.create_table()
+        self.create_triggers()
 
     def create_table(self):
         self.cursor.executescript('''
@@ -25,7 +28,7 @@ class Database:
                 `id_customer` integer primary key NOT NULL UNIQUE,
                 `name` TEXT NOT NULL,
                 `surname` TEXT NOT NULL,
-                `usename` TEXT NOT NULL,
+                `username` TEXT NOT NULL,
                 `password` TEXT NOT NULL,
                 `email` TEXT NOT NULL,
                 `address` TEXT NOT NULL DEFAULT 'null',
@@ -113,13 +116,58 @@ class Database:
 );
         ''')
         self.connection.commit()
-        
+
+    def create_triggers(self):
+        self.cursor.executescript('''
+            CREATE TRIGGER IF NOT EXISTS trg_before_insert_order_content
+            BEFORE INSERT ON order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN (SELECT quantity FROM stock WHERE id_product=NEW.id_product)<NEW.quantity THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE stock SET quantity=quantity-NEW.quantity WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_update_order_content
+            BEFORE UPDATE OF quantity ON order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN NEW.quantity>OLD.quantity AND (SELECT quantity FROM stock WHERE id_product=NEW.id_product)<(NEW.quantity-OLD.quantity) THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE stock SET quantity=quantity-(NEW.quantity-OLD.quantity) WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_delete_order_content
+            BEFORE DELETE ON order_content
+            FOR EACH ROW
+            BEGIN
+                UPDATE stock SET quantity=quantity+OLD.quantity WHERE id_product=OLD.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_insert_partner_order_content
+            BEFORE INSERT ON partner_order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN (SELECT quantity FROM partner_products WHERE id_product=NEW.id_product)<NEW.quantity THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE partner_products SET quantity=quantity-NEW.quantity WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_update_partner_order_content
+            BEFORE UPDATE OF quantity ON partner_order_content
+            FOR EACH ROW
+            BEGIN
+                SELECT CASE WHEN NEW.quantity>OLD.quantity AND (SELECT quantity FROM partner_products WHERE id_product=NEW.id_product)<(NEW.quantity-OLD.quantity) THEN RAISE(ROLLBACK,'Insufficient stock') END;
+                UPDATE partner_products SET quantity=quantity-(NEW.quantity-OLD.quantity) WHERE id_product=NEW.id_product;
+            END;
+            CREATE TRIGGER IF NOT EXISTS trg_before_delete_partner_order_content
+            BEFORE DELETE ON partner_order_content
+            FOR EACH ROW
+            BEGIN
+                UPDATE partner_products SET quantity=quantity+OLD.quantity WHERE id_product=OLD.id_product;
+            END;
+        ''')
+        self.connection.commit()
+
     def get_employees(self):
         self.cursor.execute('SELECT * FROM employees')
         return self.cursor.fetchall()
 
     def verify_customer(self, username, password):
-        self.cursor.execute('SELECT * FROM customers WHERE usename=? AND password=?', (username, password))
+        self.cursor.execute('SELECT * FROM customers WHERE username=? AND password=?', (username, password))
         result = self.cursor.fetchone()
         if result:
             return True
@@ -141,39 +189,39 @@ class Database:
             return True
         else:
             return False
-    
+
     def get_customers(self):
         self.cursor.execute('SELECT * FROM customers')
         return self.cursor.fetchall()
-    
+
     def get_orders(self):
         self.cursor.execute('SELECT * FROM orders')
         return self.cursor.fetchall()
-    
+
     def get_order_content(self):
         self.cursor.execute('SELECT * FROM order_content')
         return self.cursor.fetchall()
-    
+
     def get_stock(self):
         self.cursor.execute('SELECT * FROM stock')
         return self.cursor.fetchall()
-    
+
     def get_partners(self):
         self.cursor.execute('SELECT * FROM partners')
         return self.cursor.fetchall()
-    
+
     def get_partner_products(self):
         self.cursor.execute('SELECT * FROM partner_products')
         return self.cursor.fetchall()
-    
+
     def get_partner_orders(self):
         self.cursor.execute('SELECT * FROM partner_orders')
         return self.cursor.fetchall()
-    
+
     def get_partner_order_content(self):
         self.cursor.execute('SELECT * FROM partner_order_content')
         return self.cursor.fetchall()
-    
+
     def get_recipes(self):
         self.cursor.execute('SELECT * FROM recipes')
         return self.cursor.fetchall()
@@ -187,3 +235,73 @@ class Database:
         self.cursor.execute('SELECT quantity FROM partnet_order_content WHERE id_order = ?', (order_id,))
         result = self.cursor.fetchone()
         return result[0] if result else 0 
+    def get_least_busy_employee(self, department):
+        self.cursor.execute("""
+            SELECT e.id
+            FROM employees e
+            LEFT JOIN orders o
+              ON o.id_employee = e.id
+             AND o.progress != 'completed'
+            WHERE e.department IN (?)
+            GROUP BY e.id
+            ORDER BY COUNT(o.id_order) ASC
+            LIMIT 1
+        """, (department,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
+
+    def place_order(self, customer_id, item_list):
+        if not item_list:
+            return {'error': 'Empty item list'}
+        employee_id = self.get_least_busy_employee('sales')
+        if not employee_id:
+            return {'error': 'No available employee'}
+        with self.connection:
+            now = datetime.utcnow().isoformat(' ')
+            self.cursor.execute(
+                'INSERT INTO orders(id_client,data,progress,id_employee) VALUES(?,?,?,?)',
+                (customer_id, now, 'pending', employee_id)
+            )
+            order_id = self.cursor.lastrowid
+            for pid, qty in item_list:
+                if qty <= 0:
+                    return {'error': 'Invalid quantity'}
+                row = self.cursor.execute(
+                    'SELECT price FROM stock WHERE id_product=?', (pid,)
+                ).fetchone()
+                if not row:
+                    return {'error': 'Product not found'}
+                price = row['price']
+                self.cursor.execute(
+                    'INSERT INTO order_content(id_order,id_product,quantity,price) VALUES(?,?,?,?)',
+                    (order_id, pid, qty, price)
+                )
+        return {'success': True, 'order_id': order_id}
+
+    def place_partner_order(self, partner_id, item_list):
+        if not item_list:
+            return {'error': 'Empty item list'}
+        employee_id = self.get_least_busy_employee('sales')
+        if not employee_id:
+            return {'error': 'No available employee'}
+        with self.connection:
+            now = datetime.utcnow().isoformat(' ')
+            self.cursor.execute(
+                'INSERT INTO partner_orders(id_partner,data,status,id_employee) VALUES(?,?,?,?)',
+                (partner_id, now, 'pending', employee_id)
+            )
+            order_id = self.cursor.lastrowid
+            for pid, qty in item_list:
+                if qty <= 0:
+                    return {'error': 'Invalid quantity'}
+                row = self.cursor.execute(
+                    'SELECT price FROM partner_products WHERE id_product=?', (pid,)
+                ).fetchone()
+                if not row:
+                    return {'error': 'Product not found'}
+                price = row['price']
+                self.cursor.execute(
+                    'INSERT INTO partner_order_content(id_product,id_order,quantity,price) VALUES(?,?,?,?)',
+                    (pid, order_id, qty, price)
+                )
+        return {'success': True, 'order_id': order_id}

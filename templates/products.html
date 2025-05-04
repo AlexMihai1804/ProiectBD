@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Products</title>
+    <link rel="stylesheet"
+          href="https://pyscript.net/releases/2025.3.1/core.css">
+    <script type="module"
+            src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+<h1>Products</h1>
+<div id="output">Loading…</div>
+{% raw %}
+    <script type="py">
+        import asyncio, json
+        from js import document, console
+        from pyscript import fetch
+        async def load_products():
+            output = document.getElementById("output")
+            try:
+                resp = await fetch("/api/products")
+            except Exception as e:
+                output.innerText = f"Eroare la fetch: {e}"
+                return
+            if resp.status == 404:
+                output.innerText = "Nu sunt produse."
+                return
+            elif not resp.ok:
+                output.innerText = f"Eroare server ({resp.status})"
+                return
+            text = await resp.text()
+            console.log("raw /api/products:", text)
+            try:
+                data = json.loads(text)
+            except Exception as e:
+                output.innerText = f"Răspuns invalid JSON: {e}"
+                return
+            if not data:
+                output.innerText = "Nu sunt produse."
+                return
+            output.innerHTML = ""
+            ul = document.createElement("ul")
+            for _, name, price, *_ in data:
+                li = document.createElement("li")
+                li.innerText = f"{name} – Price: {price}"
+                ul.appendChild(li)
+            output.appendChild(ul)
+        asyncio.ensure_future(load_products())
+    </script>
+{% endraw %}
+</body>
+</html>
