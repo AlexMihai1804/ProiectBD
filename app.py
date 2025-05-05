@@ -1,5 +1,9 @@
+import os
+from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template
 from db import Database
+
+load_dotenv()
 app = Flask(__name__)
 database = Database()
 
