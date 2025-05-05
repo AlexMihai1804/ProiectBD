@@ -339,3 +339,4 @@ class Database:
         query = "SELECT * FROM orders WHERE status = ?"
         self.cursor.execute(query, (status,))
         return self.cursor.fetchall()
+    
