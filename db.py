@@ -71,7 +71,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS recipes (
             id_recipe SERIAL PRIMARY KEY,
             id_final INTEGER NOT NULL REFERENCES stock(id_product),
-            quantitiy INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
             id_material1 INTEGER NOT NULL REFERENCES stock(id_product),
             quantity_material1 INTEGER NOT NULL,
             id_material2 INTEGER REFERENCES stock(id_product),
