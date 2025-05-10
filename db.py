@@ -348,12 +348,17 @@ class Database:
         )
         if self.cursor.fetchone() is None:
             return {"error": "User not found"}
-        self.cursor.execute(
-            "UPDATE customers SET password = %s WHERE username = %s",
-            (new_password, username)
-        )
-        self.connection.commit()
-        return {"success": True}
+        try:
+            self.cursor.execute(
+                "UPDATE customers SET password = %s WHERE username = %s",
+                (new_password, username)
+            )
+            self.connection.commit()
+            return {"success": True}
+        
+        except Exception as exc:
+            self.connection.rollback()
+            return {"error": str(exc)}
 
     def reset_employee_password(self, username, new_password):
         self.cursor.execute(
@@ -399,7 +404,7 @@ class Database:
                     """
                     INSERT INTO employees (name, surname, department, salary, email, phone_number, address, username, password)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """
+                    """,
                     (
                         data["name"],
                         data["surname"],
