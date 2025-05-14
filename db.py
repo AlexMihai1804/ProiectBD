@@ -74,7 +74,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS recipes (
             id_recipe SERIAL PRIMARY KEY,
             id_final INTEGER NOT NULL REFERENCES stock(id_product),
-            quantitiy INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
             id_material1 INTEGER NOT NULL REFERENCES stock(id_product),
             quantity_material1 INTEGER NOT NULL,
             id_material2 INTEGER REFERENCES stock(id_product),
@@ -412,12 +412,17 @@ class Database:
         )
         if self.cursor.fetchone() is None:
             return {"error": "User not found"}
-        self.cursor.execute(
-            "UPDATE customers SET password = %s WHERE username = %s",
-            (new_password, username)
-        )
-        self.connection.commit()
-        return {"success": True}
+        try:
+            self.cursor.execute(
+                "UPDATE customers SET password = %s WHERE username = %s",
+                (new_password, username)
+            )
+            self.connection.commit()
+            return {"success": True}
+        
+        except Exception as exc:
+            self.connection.rollback()
+            return {"error": str(exc)}
 
     def reset_employee_password(self, username, new_password):
         self.cursor.execute(
@@ -768,3 +773,71 @@ class Database:
         return self._fetchone_scalar(
             "SELECT id_product FROM partner_products WHERE id_stock=%s LIMIT 1",
             (stock_id,), 'id_product')
+    
+    def add_user(self, user_type, data):
+        if user_type not in ["employee", "customer", "partner"]:
+            return {"error" : "Invalid user type"}
+    
+        try:
+            if user_type == "employee":
+                self.cursor.execute(
+                    """
+                    INSERT INTO employees (name, surname, department, salary, email, phone_number, address, username, password)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        data["name"],
+                        data["surname"],
+                        data["department"],
+                        data["salary"],
+                        data["email"],
+                        data["phone_number"],
+                        data["address"],
+                        data["username"],
+                        data["password"]
+                    )
+                )
+            
+            elif user_type == "customer":
+                self.cursor.execute(
+                    """
+                    INSERT INTO customers (name, surname, username, password, email, address, phone_number)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        data["name"],
+                        data["surname"],
+                        data["username"],
+                        data["password"],
+                        data["email"],
+                        data.get("address", "null"),
+                        data.get("phone_number", "null")
+                    )
+                )
+                
+            elif user_type == "partner":
+                self.cursor.execute(
+                    """
+                    INSERT INTO partners (name, username, password, address, phone_number, email)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        data["name"],
+                        data["username"],
+                        data["password"],
+                        data.get("address"),
+                        data.get("phone_number"),
+                        data.get("email")
+                    )
+                )
+            
+            self.connection.commit()
+            return {"succes" : True}
+    
+        except psycopg2.IntegrityError as e:
+            self.connection.rollback()
+            return {"error": "Username already exists"}
+        
+        except Exception as e:
+            self.connection.rollback()
+            return{"error" : str(e)}
