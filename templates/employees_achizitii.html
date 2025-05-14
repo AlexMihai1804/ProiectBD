@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Departament Achiziții</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Stoc curent & oferte parteneri</h2>
+    <table id="stk" class="orders-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>Produs</th><th>Stoc</th><th>Cumpără</th>
+          <th>Cea mai bună ofertă (RON)</th><th>Partener</th>
+        </tr>
+      </thead>
+      <tbody><tr><td colspan="6" style="text-align:center">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  {% raw %}
+  <py-script>
+from js import document, window
+from pyodide.http import pyfetch
+from pyodide.ffi import create_proxy
+import asyncio, json
+
+tbody = document.querySelector("#stk tbody")
+
+def row(item):
+    tr = document.createElement("tr")
+
+    # id & name ----------------------------------------------------------
+    for key in ("id_product", "name"):
+        td = document.createElement("td")
+        td.textContent = item[key]
+        tr.appendChild(td)
+
+    # current stock ------------------------------------------------------
+    td_stock = document.createElement("td")
+    td_stock.style.textAlign = "center"
+    td_stock.textContent = item["quantity"]
+    tr.appendChild(td_stock)
+
+    # input for purchase -------------------------------------------------
+    inp = document.createElement("input")
+    inp.type = "number"
+    inp.min = "0"
+    inp.step = "1"
+    inp.value = "0"
+    inp.style.width = "70px"; inp.dataset.pid = item["id_product"]
+    td_qty = document.createElement("td")
+    td_qty.style.textAlign = "center"
+    td_qty.appendChild(inp)
+    tr.appendChild(td_qty)
+
+    # cheapest price & partner ------------------------------------------
+    for key in ("partner_price", "partner_name"):
+        td = document.createElement("td")
+        td.style.textAlign = "center"
+        td.textContent = item.get(key, "-")
+        tr.appendChild(td)
+
+    return tr
+
+async def fetch_data():
+    resp = await pyfetch("/api/achizitii/stock")
+    if not resp.ok:
+        return {"error": f"HTTP {resp.status}"}
+    return await resp.json()
+
+async def refresh():
+    tbody.innerHTML = "<tr><td colspan='6' style='text-align:center'>Loading…</td></tr>"
+    data = await fetch_data()
+    tbody.innerHTML = ""
+    if not isinstance(data, list):
+        tbody.innerHTML = f"<tr><td colspan='6'>{data.get('error','Eroare')}</td></tr>"
+        return
+    for it in data:
+        tbody.appendChild(row(it))
+
+async def send_order(evt):
+    evt.preventDefault()
+    items = []
+    for inp in tbody.querySelectorAll("input[type='number']"):
+        try: q=int(inp.value)
+        except: q=0
+        if q>0:
+            items.append([int(inp.dataset.pid), q])
+    if not items:
+        window.alert("Selectează cantități!"); return
+    r = await pyfetch(
+        "/api/achizitii/place_order",
+        method="POST",
+        headers={"Content-Type":"application/json"},
+        body=json.dumps({"items":items})
+    )
+    res = await r.json()
+    window.alert("Trimis!" if res.get("success") else res.get("error","Eroare"))
+    await refresh()
+
+asyncio.ensure_future(refresh())
+
+# use the already-in-HTML button instead of creating one
+btn = document.getElementById("procure-btn")
+btn.addEventListener("click", create_proxy(send_order))
+  </py-script>
+  {% endraw %}
+
+<!-- fixed navigation button -->
+<div style="margin:20px 0; text-align:right">
+  <button id="procure-btn" class="btn btn-primary">Plasează achiziție</button>ced -->
+  <button class="btn btn-secondary"
+          onclick="window.location='/employees/achizitii/orders'">btn btn-primary">Plasează achiziție</button>
+    Vezi comenzi parteneri
+  </button>location='/employees/achizitii/orders'">
+</div>menzi parteneri
+tton>
+</body></div>
+</html></html>

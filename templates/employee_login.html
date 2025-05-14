@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Login Angajat</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-container">
+    <h2>Angajat Log In</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post">
+      <input name="username" placeholder="Username angajat" required>
+      <input name="password" type="password" placeholder="Parolă" required>
+      <button type="submit" class="btn btn-primary">Log In</button>
+    </form>
+    <button class="btn btn-secondary"
+            onclick="window.location='{{ url_for('products_page') }}'">
+      Înapoi
+    </button>
+  </div>
+</body>
+</html>

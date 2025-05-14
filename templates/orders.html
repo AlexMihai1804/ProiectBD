@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>Istoric comenzi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    {% include '_navbar.html' %}
+    <div class="main-container">
+        <h2>Istoricul comenzilor</h2>
+        {% if orders %}
+        <table class="orders-table">
+            <thead>
+                <tr><th>ID</th><th>Data</th><th>Status</th><th>Articole</th></tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td>{{ o.id_order }}</td>
+                    <td>{{ o.data.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ o.progress }}</td>
+                    <td>{{ o.qty }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Nu ai plasat nicio comandă.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

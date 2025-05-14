@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Date personale</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Profilul tău</h2>
+    <ul class="profile-list">
+      <li><strong>Nume:</strong> {{ customer.name }} {{ customer.surname }}</li>
+      <li><strong>Username:</strong> {{ customer.username }}</li>
+      <li><strong>Email:</strong> {{ customer.email }}</li>
+      <li><strong>Adresă:</strong> {{ customer.address }}</li>
+      <li><strong>Telefon:</strong> {{ customer.phone_number }}</li>
+    </ul>
+  </div>
+</body>
+</html>

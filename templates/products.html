@@ -1,54 +1,163 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Products</title>
-    <link rel="stylesheet"
-          href="https://pyscript.net/releases/2025.3.1/core.css">
-    <script type="module"
-            src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Produse</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
 </head>
 <body>
-<h1>Products</h1>
-<div id="output">Loading…</div>
-{% raw %}
-    <script type="py">
-        import asyncio, json
-        from js import document, console
-        from pyscript import fetch
-        async def load_products():
-            output = document.getElementById("output")
-            try:
-                resp = await fetch("/api/products")
-            except Exception as e:
-                output.innerText = f"Eroare la fetch: {e}"
-                return
-            if resp.status == 404:
-                output.innerText = "Nu sunt produse."
-                return
-            elif not resp.ok:
-                output.innerText = f"Eroare server ({resp.status})"
-                return
-            text = await resp.text()
-            console.log("raw /api/products:", text)
-            try:
-                data = json.loads(text)
-            except Exception as e:
-                output.innerText = f"Răspuns invalid JSON: {e}"
-                return
-            if not data:
-                output.innerText = "Nu sunt produse."
-                return
-            output.innerHTML = ""
-            ul = document.createElement("ul")
-            for _, name, price, *_ in data:
-                li = document.createElement("li")
-                li.innerText = f"{name} – Price: {price}"
-                ul.appendChild(li)
-            output.appendChild(ul)
-        asyncio.ensure_future(load_products())
-    </script>
-{% endraw %}
+  {% include '_navbar.html' %}
+
+  <div class="main-container">
+    <div class="header-bar">
+      <h1>Produse</h1>
+      {% if session.user %}
+      <!-- logged in: keep original ID so popup JS binds -->
+      <button id="order-btn" type="button" class="btn btn-primary">Plasează comanda</button>
+      {% else %}
+      <!-- not logged in: redirect to login -->
+      <button id="login-btn" type="button" class="btn btn-primary"
+              onclick="alert('Trebuie să te loghezi!'); window.location='{{ url_for('login') }}'">
+        Plasează comanda
+      </button>
+      {% endif %}
+    </div>
+    <div id="output" class="product-list"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Popup pentru detalii comandă -->
+  <div id="popup" class="popup hidden">
+    <div class="popup-content">
+      <h3>Detalii comandă</h3>
+      <label>Adresă:  <input id="order-address"></label>
+      <label>Telefon: <input id="order-phone"></label>
+      <button id="submit-order" type="button" class="btn btn-primary">Trimite</button>
+      <button id="cancel"        type="button" class="btn btn-secondary">Anulează</button>
+    </div>
+  </div>
+
+  {% raw %}
+  <py-script>
+import asyncio, json
+from js import document, window
+from pyodide.ffi import create_proxy, create_once_callable
+from pyodide.http import pyfetch  # ← pyfetch respectă corect metoda HTTP
+
+# --------------------------------------------------
+#  Încărcare produse din API
+# --------------------------------------------------
+async def load_products():
+    output = document.getElementById("output")
+    try:
+        response = await pyfetch("/api/products")
+        if not response.ok:
+            output.innerText = "Nu sunt produse." if response.status == 404 else f"Eroare server ({response.status})"
+            return
+        products = await response.json()
+        output.innerHTML = ""
+        for product in products:
+            card = document.createElement("div")
+            card.className = "product-card"
+
+            # name + price + stock ---------------------------------------
+            name_span = document.createElement("span")
+            name_span.innerText = (
+                f"{product['name']} – {product['price']} RON  "
+                f"(stoc: {product['quantity']})"
+            )
+
+            # qty input limited to stock ---------------------------------
+            qty_input       = document.createElement("input")
+            qty_input.type  = "number"
+            qty_input.min   = "0"
+            qty_input.max   = str(product['quantity'])
+            qty_input.value = "0"
+            qty_input.id    = f"qty-{product['id_product']}"
+
+            card.appendChild(name_span)
+            card.appendChild(qty_input)
+            output.appendChild(card)
+    except Exception as exc:
+        output.innerText = f"Eroare: {exc}"
+
+# --------------------------------------------------
+#  Popup helpers
+# --------------------------------------------------
+
+def show_popup(evt=None):
+    document.getElementById("popup").classList.remove("hidden")
+
+def hide_popup(evt=None):
+    document.getElementById("popup").classList.add("hidden")
+
+# --------------------------------------------------
+#  Plasare comandă
+# --------------------------------------------------
+async def place_order(evt=None):
+    if evt is not None:
+        evt.preventDefault()
+
+    items = []
+    for inp in document.querySelectorAll("input[type='number']"):
+        # ----- validate against negative and > stock ----------
+        try:
+            qty = int(inp.value or 0)
+        except ValueError:
+            qty = 0
+        max_qty = int(inp.max) if inp.max else 0
+        if qty < 0:
+            qty = 0
+        if qty > max_qty:
+            qty = max_qty
+            inp.value = str(max_qty)           # clamp visually
+        # ------------------------------------------------------
+        if qty > 0:
+            pid = int(inp.id.split("-")[1])
+            items.append([pid, qty])
+
+    if not items:
+        window.alert("Selectați cel puțin un produs!")
+        return
+    try:
+        resp = await pyfetch(
+            "/api/place_order",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({"items": items})
+        )
+        data = await resp.json()
+    except Exception as exc:
+        window.alert(f"Eroare rețea: {exc}")
+        return
+    if data.get("success"):
+        window.alert(f"Comandă #{data['order_id']} plasată!")
+        for inp in document.querySelectorAll("input[type='number']"):
+            inp.value = "0"
+        hide_popup()
+    else:
+        window.alert(f"Eroare: {data.get('error', 'necunoscută')}")
+
+# --------------------------------------------------
+#  Inițializare & evenimente
+# --------------------------------------------------
+asyncio.ensure_future(load_products())
+
+btn_order  = document.getElementById("order-btn")
+btn_submit = document.getElementById("submit-order")
+btn_cancel = document.getElementById("cancel")
+
+# only bind popup if order-btn exists (i.e. user is logged in)
+if btn_order:
+    btn_order.addEventListener("click",  create_proxy(show_popup))
+
+btn_cancel.addEventListener("click", create_proxy(hide_popup))
+btn_submit.addEventListener("click", create_once_callable(place_order))
+  </py-script>
+  {% endraw %}
 </body>
 </html>

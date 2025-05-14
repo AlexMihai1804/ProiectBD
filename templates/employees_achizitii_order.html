@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Comandă partener #{{ order.id_order }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Comandă #{{ order.id_order }}</h2>
+    <p><strong>Partener:</strong> {{ partner }}</p>
+    <p><strong>Data:</strong> {{ order.date_fmt }}</p>
+    <p><strong>Status:</strong> {{ order.status }}</p>
+
+    <h3>Articole</h3>
+    <table class="orders-table">
+      <thead><tr><th>Produs</th><th>Cantitate</th><th>Preț (RON)</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr><td>{{ it.name }}</td><td>{{ it.quantity }}</td><td>{{ it.price }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

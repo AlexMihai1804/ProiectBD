@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Departament Vânzări</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+
+  <div class="main-container">
+    <h2>Comenzile mele</h2>
+
+    <table id="orders-table" class="orders-table">
+      <thead>
+        <tr>
+          <th>ID</th><th>Data</th><th>Articole</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody><tr><td colspan="4" style="text-align:center">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  {% raw %}
+  <py-script>
+import asyncio, json
+from js import document
+from pyodide.http import pyfetch
+
+body = document.querySelector("#orders-table tbody")
+
+# ---------- API ----------
+async def get_orders():
+    return await (await pyfetch("/api/employee/orders")).json()
+
+# ---------- builders ----------
+def build_row(o):
+    tr = document.createElement("tr")
+
+    # id link ------------------------------------------------------------
+    td_id = document.createElement("td")
+    a = document.createElement("a")
+    a.href = f"/employees/vanzari/order/{o['id_order']}"
+    a.textContent = str(o["id_order"])
+    td_id.appendChild(a)
+    tr.appendChild(td_id)
+
+    # formatted date -----------------------------------------------------
+    td_date = document.createElement("td")
+    td_date.textContent = o["date_fmt"]
+    tr.appendChild(td_date)
+
+    # qty ---------------------------------------------------------------
+    td_qty = document.createElement("td")
+    td_qty.textContent = str(o["qty"])
+    tr.appendChild(td_qty)
+
+    # status ------------------------------------------------------------
+    td_status = document.createElement("td")
+    td_status.textContent = o["progress"]
+    tr.appendChild(td_status)
+
+    return tr
+
+# ---------- refresh ----------
+async def refresh():
+    body.innerHTML = "<tr><td colspan='4' style='text-align:center'>Loading…</td></tr>"
+    data = await get_orders()
+    if not isinstance(data, list):
+        body.innerHTML = f"<tr><td colspan='4'>{data.get('error','Eroare')}</td></tr>"
+        return
+    body.innerHTML = ""
+    for order in data:
+        body.appendChild(build_row(order))
+
+asyncio.ensure_future(refresh())
+  </py-script>
+  {% endraw %}
+</body>
+</html>
