@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Comenzile mele către parteneri</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Comenzile către parteneri</h2>
+    <table id="tbl" class="orders-table">
+      <thead><tr><th>ID</th><th>Partener</th><th>Data</th><th>Status</th></tr></thead>
+      <tbody><tr><td colspan="4" style="text-align:center">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+  {% raw %}
+  <py-script>
+from js import document
+from pyodide.http import pyfetch
+import asyncio
+
+tb = document.querySelector("#tbl tbody")
+
+def make_row(o):
+    tr = document.createElement("tr")
+    # ID with link
+    td_id = document.createElement("td")
+    a = document.createElement("a")
+    a.href = f"/employees/achizitii/order/{o['id_order']}"
+    a.textContent = str(o['id_order'])
+    td_id.appendChild(a)
+    tr.appendChild(td_id)
+    # partner
+    for key in ('partner', 'date_fmt', 'status'):
+        td = document.createElement("td")
+        td.textContent = o[key]
+        tr.appendChild(td)
+    return tr
+
+async def load():
+    r = await pyfetch("/api/achizitii/my_orders")
+    data = await r.json()
+    tb.innerHTML = ""
+    if not isinstance(data, list):
+        tb.innerHTML = f"<tr><td colspan='4'>{data.get('error','Eroare')}</td></tr>"
+        return
+    for o in data:
+        tb.appendChild(make_row(o))
+
+asyncio.ensure_future(load())
+  </py-script>
+  {% endraw %}
+</body>
+</html>

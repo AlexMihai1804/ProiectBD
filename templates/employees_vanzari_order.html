@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <title>Detalii comandă #{{ order.id_order }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Comanda #{{ order.id_order }}</h2>
+    <p><strong>Data:</strong> {{ order.data.strftime('%Y-%m-%d %H:%M') }}</p>
+    <p><strong>Status curent:</strong> {{ order.progress }}</p>
+    <p><strong>Client:</strong> {{ customer.name }} {{ customer.surname }} ({{ customer.email }})</p>
+    <p><strong>Adresă:</strong> {{ customer.address }} | <strong>Telefon:</strong> {{ customer.phone_number }}</p>
+
+    <h3>Articole</h3>
+    <table class="orders-table">
+      <thead><tr><th>Produs</th><th>Bucăți</th><th>Preț (RON)</th></tr></thead>
+      <tbody>
+        {% for it in items %}
+        <tr><td>{{ it.name }}</td><td>{{ it.quantity }}</td><td>{{ it.price }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h3>Actualizare status</h3>
+    <form method="post">
+      <select name="status">
+        {% for s in statuses %}
+          <option value="{{ s }}" {% if s==order.progress %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" type="submit">Salvează</button>
+    </form>
+
+    <form method="post" style="margin-top:12px">
+      <input type="hidden" name="status" value="cancelled">
+      <button class="btn btn-secondary"
+              onclick="return confirm('Sigur anulezi această comandă?')">
+        Anulează comanda
+      </button>
+    </form>
+  </div>
+</body>
+</html>
