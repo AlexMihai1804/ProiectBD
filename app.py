@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import traceback
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
@@ -495,31 +496,47 @@ def api_create_product():
 def api_create_employee():
     data = request.get_json(silent=True) or request.form
     print("Employee data received:", data)
-    name       = data.get('name')
-    surname    = data.get('surname')
-    username   = data.get('username')
-    email      = data.get('email')
-    password   = data.get('password')
-    department = data.get('department')
-    phone_number = data.get('phone_number','')
-    address    = data.get('address','')
-    salary    = data.get('salary', type=float)
-    if not all([name, surname, username, email, password, department, phone_number, address, salary]):
-        return jsonify({'error':'Toate campurile sunt obligatorii'}), 400
 
-    # simple password hash
-    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+    # parse salary explicitly
+    try:
+        salary = float(data.get('salary', '').strip())
+    except Exception:
+        salary = None
+
+    name         = data.get('name')
+    surname      = data.get('surname')
+    username     = data.get('username')
+    email        = data.get('email')
+    password     = data.get('password')
+    department   = data.get('department')
+    phone_number = data.get('phone_number','')
+    address      = data.get('address','')
+
+    if not all([name, surname, username, email, password,
+                department, phone_number, address, salary]):
+        return jsonify({'error':'Toate câmpurile sunt obligatorii'}), 400
+
     try:
         database.cursor.execute(
-            "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (name, surname, department, salary, email, phone_number, address, username, pwd_hash)
+            """
+            INSERT INTO employees
+              (name, surname, department, salary,
+               email, phone_number, address,
+               username, password)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (name, surname, department, salary,
+             email, phone_number, address,
+             username, password)
         )
         database.connection.commit()
-        return jsonify({'success':True}), 201
+        return jsonify({'success': True}), 201
 
     except Exception as e:
+        # print full traceback to your terminal
+        traceback.print_exc()
         database.connection.rollback()
+        # also return the exact error so you can see it in the browser
         return jsonify({'error': str(e)}), 500
 
 # -- CUSTOMER ----------------------------------------------------------------
@@ -527,17 +544,21 @@ def api_create_employee():
 def api_create_customer():
     data = request.get_json(silent=True) or request.form
     name     = data.get('name')
+    surname = data.get('surname')
+    username = data.get('username')
     email    = data.get('email')
     password = data.get('password')
-    if not all([name, email, password]):
+    address  = data.get('address','')
+    phone_number   = data.get('phone_number','')
+    if not all([name, surname, username, email, password]):
         return jsonify({'error':'Toate campurile sunt obligatorii'}), 400
 
     # reuse your existing helper if you have one, otherwise do raw INSERT
-    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+    
     try:
         database.cursor.execute(
-            "INSERT INTO customers (name,email,password_hash) VALUES (%s,%s,%s)",
-            (name, email, pwd_hash)
+            "INSERT INTO customers (name, surname, username, email, password, address, phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (name, surname, username, email, password, address, phone_number)
         )
         database.connection.commit()
         return jsonify({'success':True}), 201
@@ -551,18 +572,69 @@ def api_create_customer():
 def api_create_partner():
     data = request.get_json(silent=True) or request.form
     name    = data.get('name')
+    username = data.get('username')
+    password = data.get('password')
     address = data.get('address','')
-    phone   = data.get('phone','')
+    phone_number   = data.get('phone_number','')
+    email = data.get('email','')
     if not name:
         return jsonify({'error':'Nume partener obligatoriu'}), 400
 
     try:
         database.cursor.execute(
-            "INSERT INTO partners (name,address,phone) VALUES (%s,%s,%s)",
-            (name, address, phone)
+            "INSERT INTO partners (name, username, password, address, phone_number, email) VALUES (%s,%s,%s,%s,%s,%s)",
+            (name, username, password, address, phone_number, email)
         )
         database.connection.commit()
         return jsonify({'success':True}), 201
+
+    except Exception as e:
+        database.connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+# -- PARTNER -----------------------------------------------------------------
+@app.route('/api/recipes', methods=['POST'])
+def api_create_recipe():
+    data = request.get_json(silent=True) or request.form
+
+    # 1) parse & validate the “final” product
+    try:
+        id_final = int(data.get('id_final'))
+        final_qty = int(data.get('quantity'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'id_final și quantity trebuie numere întregi'}), 400
+
+    # 2) gather up to 5 materiale + cantități
+    materials = []
+    for i in range(1, 6):
+        mat = data.get(f'id_material{i}')
+        qty = data.get(f'quantity_material{i}')
+        if mat and qty:
+            try:
+                materials.append((int(mat), int(qty)))
+            except ValueError:
+                return jsonify({'error': f'Ingredient {i} invalid'}), 400
+        else:
+            # pad with NULLs if missing
+            materials.append((None, None))
+
+    # 3) build column list & values array
+    cols = ['id_final', 'quantity']
+    vals = [id_final, final_qty]
+    for idx, (mid, mqty) in enumerate(materials, start=1):
+        cols.append(f'id_material{idx}')
+        cols.append(f'quantity_material{idx}')
+        vals.append(mid)
+        vals.append(mqty)
+
+    placeholders = ','.join(['%s'] * len(vals))
+    col_sql      = ','.join(cols)
+    sql          = f"INSERT INTO recipes ({col_sql}) VALUES ({placeholders})"
+
+    try:
+        database.cursor.execute(sql, tuple(vals))
+        database.connection.commit()
+        return jsonify({'success': True}), 201
 
     except Exception as e:
         database.connection.rollback()
