@@ -4,6 +4,9 @@
     {% if session.employee %}
       <a href="{{ url_for('employees') }}">Acasă</a>
       <a href="{{ url_for('partners_page') }}">Parteneri</a>
+    {% elif session.partner %}
+      <a href="{{ url_for('partners_page') }}">Acasă</a>
+      <a href="{{ url_for('partner_orders_page') }}">Comenzi</a>
     {% else %}
       <a href="{{ url_for('products_page') }}">Acasă</a>
     {% endif %}

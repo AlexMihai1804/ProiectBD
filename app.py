@@ -658,6 +658,45 @@ def api_create_recipe():
         database.connection.rollback()
         return jsonify({'error': str(e)}), 500
 
+# ---------- PARTNER ORDERS UI -----------------------
+@app.route('/partners/orders')
+def partner_orders_page():
+    if 'partner' not in session:
+        return redirect(url_for('partner_login'))
+    partner_id = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    if not partner_id:
+        return "Partener inexistent", 404
+    return render_template('partner_orders.html', partner_id=partner_id)
+
+# ---------- PARTNER ORDERS APIs ---------------------
+@app.route('/api/partner/my_orders')
+def api_partner_my_orders():
+    if 'partner' not in session:
+        return jsonify({'error': 'Not authorized'}), 403
+    pid = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    data = database.get_partner_orders_by_partner(pid)
+    for r in data:
+        r['date_fmt'] = r['data'].strftime('%Y-%m-%d %H:%M')
+    return jsonify(data)
+
+@app.route('/api/partner/update_order', methods=['POST'])
+def api_partner_update_order():
+    if 'partner' not in session:
+        return jsonify({'error': 'Not authorized'}), 403
+    payload = request.get_json() or {}
+    pid   = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    res = database.update_partner_order_status(
+        pid,
+        payload.get('order_id'),
+        payload.get('status'))
+    return (jsonify(res), 200 if res.get('success') else 400)
+
 # --------------------------------------------------
 if __name__ == '__main__':
     app.run(debug=True)

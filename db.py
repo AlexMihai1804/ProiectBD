@@ -949,3 +949,40 @@ class Database:
             self.connection.rollback()          # ensure clean state
             return {'success': False, 'error': str(e)}
 
+    # ---------- PARTNER order helpers ----------------
+    def get_partner_orders_by_partner(self, partner_id: int):
+        """Return partner_orders rows for one partner_id (latest first)."""
+        self.cursor.execute(
+            "SELECT * FROM partner_orders WHERE id_partner=%s ORDER BY data DESC",
+            (partner_id,))
+        return self.cursor.fetchall()
+
+    def update_partner_order_status(self, partner_id: int,
+                                    order_id: int, new_status: str):
+        allowed = {'pending', 'processing', 'completed', 'cancelled'}
+        if new_status not in allowed:
+            return {'error': 'Status invalid'}
+
+        # read current order
+        self.cursor.execute(
+            "SELECT status FROM partner_orders "
+            "WHERE id_order=%s AND id_partner=%s",
+            (order_id, partner_id)
+        )
+        row = self.cursor.fetchone()
+        if not row:
+            return {'error': 'Comandă inexistentă'}
+        if row['status'] == new_status:
+            return {'success': True}
+
+        try:
+            with self.connection:
+                self.cursor.execute(
+                    "UPDATE partner_orders SET status=%s WHERE id_order=%s",
+                    (new_status, order_id)
+                )
+            return {'success': True}
+        except Exception as exc:
+            self.connection.rollback()
+            return {'error': str(exc)}
+
