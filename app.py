@@ -206,6 +206,14 @@ def api_products():
     prods = database.get_stock()          # final-only by default
     return (jsonify(prods), 200) if prods else (jsonify({'error': 'No products'}), 404)
 
+# --- PUBLIC STOCK API (both raw + final) -------------------------------
+@app.route('/api/stock')
+def api_stock():
+    """Return all products; ?final_only=0 keeps raws too (default 1)."""
+    final_only = request.args.get('final_only', '1') != '0'
+    rows = database.get_stock(final_only=final_only)
+    return (jsonify(rows), 200) if rows else (jsonify({'error': 'No products'}), 404)
+
 # ------------ ACHIZITII API ---------------------------------
 @app.route('/api/achizitii/stock')
 def api_achizitii_stock():
@@ -311,26 +319,34 @@ def get_recipes():
         return jsonify({'error': 'Not authorized'}), 403
 
     recipes = database.get_recipes()
+
+    # -------- NEW: one single query instead of dozens -----------------
+    stock_rows = database.get_stock(final_only=False)
+    stock_map  = {row['id_product']: row for row in stock_rows}
+    # ------------------------------------------------------------------
+
     result = []
-    for recipe in recipes:                      # RealDictRow → dict
+    for rec in recipes:
         ingredients = []
         for i in range(1, 6):
-            material_id = recipe.get(f'id_material{i}')
-            quantity    = recipe.get(f'quantity_material{i}')
-            if material_id and quantity:
-                material_name = database._fetchone_scalar(
-                    "SELECT name FROM stock WHERE id_product = %s",
-                    (material_id,)
-                )
-                ingredients.append({"name": material_name, "quantity": quantity})
+            mid = rec.get(f'id_material{i}')
+            qty = rec.get(f'quantity_material{i}')
+            if mid and qty:
+                srow = stock_map.get(mid, {})
+                ingredients.append({
+                    'name':     srow.get('name', f'ID {mid}'),
+                    'quantity': qty,
+                    'stock':    srow.get('quantity', 0)
+                })
+
+        final = stock_map.get(rec['id_final'], {})
         result.append({
-            "id_final": recipe["id_final"],
-            "final_name": database._fetchone_scalar(
-                "SELECT name FROM stock WHERE id_product = %s",
-                (recipe["id_final"],)
-            ),
-            "ingredients": ingredients
+            'id_final':    rec['id_final'],
+            'final_name':  final.get('name', f'ID {rec["id_final"]}'),
+            'final_stock': final.get('quantity', 0),
+            'ingredients': ingredients
         })
+
     return jsonify(result)
 
 @app.route('/api/employee/productie/recipes', methods=['POST'])
