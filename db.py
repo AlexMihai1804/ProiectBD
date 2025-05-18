@@ -74,7 +74,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS recipes (
             id_recipe SERIAL PRIMARY KEY,
             id_final INTEGER NOT NULL REFERENCES stock(id_product),
-            quantity INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,       -- DEFAULT added
             id_material1 INTEGER NOT NULL REFERENCES stock(id_product),
             quantity_material1 INTEGER NOT NULL,
             id_material2 INTEGER REFERENCES stock(id_product),
@@ -118,6 +118,10 @@ class Database:
         );
         """
         self.cursor.execute(ddl)
+        # make sure DEFAULT exists when upgrading ------------------------
+        self.cursor.execute(
+            "ALTER TABLE recipes ALTER COLUMN quantity SET DEFAULT 1"
+        )
         # ensure column exists when upgrading an older DB
         self.cursor.execute("ALTER TABLE stock ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'final'")
         self.connection.commit()
@@ -150,7 +154,6 @@ class Database:
             RETURN OLD;
         END; $$;
         DROP TRIGGER IF EXISTS trg_before_delete_order_content ON order_content;
-        CREATE TRIGGER trg_before_delete_order_content BEFORE DELETE ON order_content FOR EACH ROW EXECUTE FUNCTION trg_before_delete_order_content_fn();
         CREATE OR REPLACE FUNCTION trg_before_insert_partner_order_content_fn() RETURNS TRIGGER LANGUAGE plpgsql AS $$
         BEGIN
             IF (SELECT quantity FROM partner_products WHERE id_product = NEW.id_product) < NEW.quantity THEN
@@ -208,23 +211,35 @@ class Database:
         """)
         self.connection.commit()
 
+    # -------- NEW: private helper for read-only queries -------------
+    def _dict_cur(self):
+        """Return a fresh RealDictCursor (auto-closed via context-manager)."""
+        return self.connection.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        )
+
+    # ------------------------ patched helpers -----------------------
+
     def _fetchone_scalar(self, query, params=(), key=None):
-        self.cursor.execute(query, params)
-        row = self.cursor.fetchone()
-        if row is None:
-            return None
-        return row[key or list(row.keys())[0]]
+        with self._dict_cur() as cur:          # ← use dedicated cursor
+            cur.execute(query, params)
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return row[key or list(row.keys())[0]]
 
     # ---------- stock helpers ----------
     def get_stock(self, final_only: bool = True):
         """
         Return stock items. If final_only=True, filter type='final'.
+        Uses its own cursor so it never interferes with other result sets.
         """
-        if final_only:
-            self.cursor.execute("SELECT * FROM stock WHERE type='final'")
-        else:
-            self.cursor.execute("SELECT * FROM stock")
-        return self.cursor.fetchall()
+        with self._dict_cur() as cur:          # ← independent cursor
+            if final_only:
+                cur.execute("SELECT * FROM stock WHERE type='final'")
+            else:
+                cur.execute("SELECT * FROM stock")
+            return cur.fetchall()
 
     def get_cheapest_partner_offer(self):
         """
@@ -315,8 +330,10 @@ class Database:
         return self.cursor.fetchall()
 
     def get_recipes(self):
-        self.cursor.execute("SELECT * FROM recipes")
-        return self.cursor.fetchall()
+        """Fetch all recipes (dedicated cursor to avoid clobbering)."""
+        with self._dict_cur() as cur:
+            cur.execute("SELECT * FROM recipes")
+            return cur.fetchall()
 
     def get_order_quantity(self, order_id):
         q = self._fetchone_scalar(
@@ -350,7 +367,9 @@ class Database:
 
     def verify_partner(self, username, password):
         self.cursor.execute(
-            "SELECT 1 FROM partners WHERE LOWER(username)=LOWER(%s) AND password=%s",
+            "SELECT 1 FROM partners "
+            "WHERE LOWER(username)=LOWER(%s) "
+            "  AND LOWER(password)=LOWER(%s)",
             (username, password)
         )
         return self.cursor.fetchone() is not None
@@ -888,46 +907,45 @@ class Database:
 
     def add_recipe(self, final_name: str, ingredients: list[dict]):
         """
-        ingredients: [{ 'name': <stock name>, 'quantity': <int> }, …]
+        Insert a new recipe; always stores a base quantity (=1) and
+        guarantees DB rollback on failure.
         """
         try:
             with self.connection:
-                # 1) find the product ID for the final item
                 id_final = self._fetchone_scalar(
-                    "SELECT id_product FROM stock WHERE name = %s",
-                    (final_name,)
-                )
+                    "SELECT id_product FROM stock WHERE name=%s AND type='final'",
+                    (final_name,))
                 if not id_final:
                     return {'success': False, 'error': 'Final product not found'}
 
-                # 2) build column lists for up to 5 ingredients
-                cols = ['id_final']
-                vals = [id_final]
+                seen = set()
+                cols = ['id_final', 'quantity']   # ← base quantity column
+                vals = [id_final, 1]              # ← default = 1
+
                 for idx, ing in enumerate(ingredients[:5], start=1):
-                    # look up the ingredient’s product ID
                     mat_id = self._fetchone_scalar(
-                        "SELECT id_product FROM stock WHERE name = %s",
-                        (ing['name'],)
-                    )
+                        "SELECT id_product FROM stock WHERE name=%s AND type<>'final'",
+                        (ing['name'],))
                     if not mat_id:
                         raise ValueError(f"Ingredient not found: {ing['name']}")
+                    if mat_id in seen:
+                        raise ValueError(f"Ingredient duplicated: {ing['name']}")
+                    seen.add(mat_id)
+
                     cols += [f"id_material{idx}", f"quantity_material{idx}"]
                     vals += [mat_id, ing['quantity']]
 
-                # pad remaining slots with NULL
+                # pad unused slots ---------------------------------------
                 for idx in range(len(ingredients)+1, 6):
                     cols += [f"id_material{idx}", f"quantity_material{idx}"]
                     vals += [None, None]
 
-                # 3) insert into recipes table
-                col_sql  = ", ".join(cols)
-                ph_sql   = ", ".join(["%s"] * len(vals))
-                sql      = f"INSERT INTO recipes ({col_sql}) VALUES ({ph_sql})"
+                sql = f"INSERT INTO recipes ({', '.join(cols)}) VALUES ({', '.join(['%s']*len(vals))})"
                 self.cursor.execute(sql, tuple(vals))
 
             return {'success': True, 'recipe_id': id_final}
 
         except Exception as e:
-            # any error rolls back automatically via with self.connection
+            self.connection.rollback()          # ensure clean state
             return {'success': False, 'error': str(e)}
 

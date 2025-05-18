@@ -18,24 +18,22 @@
       <button id="show-form-btn" class="btn btn-secondary">Adaugă rețetă nouă</button>
     </div>
 
-    <!-- New recipe form -->
-    <div id="new-recipe-form" class="card" style="display:none; padding:1em; margin:1em 0;">
-      <h3>Formular rețetă nouă</h3>
-      <form id="recipe-form">
-        <div>
-          <label for="final-name">Produs final:</label><br>
-          <input type="text" id="final-name" required style="width:100%; max-width:400px;"><br><br>
-        </div>
-        <div id="ingredients-container">
+    <!-- New-recipe POPUP -->
+    <div id="recipe-popup" class="popup hidden">
+      <div class="popup-content">
+        <h3>Formular rețetă nouă</h3>
+        <form id="recipe-form">
+          <label>Produs final:</label><br>
+          <select id="final-name" required style="width:100%; max-width:400px;"></select><br><br>
+
           <label>Ingrediente:</label>
-          <div class="ingredient-row" style="margin-bottom:.5em;">
-            <input type="text" class="ingredient-name" placeholder="Nume ingredient" required style="width:60%;">
-            <input type="number" class="ingredient-qty" placeholder="Cantitate" min="1" required style="width:30%; margin-left:1em;">
-          </div>
-        </div>
-        <button type="button" id="add-ingredient-btn" class="btn btn-link">Adaugă ingredient</button><br><br>
-        <button type="submit" class="btn btn-primary">Salvează rețetă</button>
-      </form>
+          <div id="ingredients-container"></div>
+
+          <button type="button" id="add-ingredient-btn" class="btn btn-link">Adaugă ingredient</button><br><br>
+          <button type="submit" class="btn btn-primary">Salvează</button>
+          <button type="button" id="close-popup" class="btn btn-secondary">Renunță</button>
+        </form>
+      </div>
     </div>
 
     <!-- Recipe cards output -->
@@ -44,31 +42,17 @@
     </div>
   </div>
 
-  <!-- Toggle and add ingredient JS -->
-  <script>
-    document.getElementById('show-form-btn').onclick = () => {
-      const f = document.getElementById('new-recipe-form');
-      f.style.display = f.style.display === 'none' ? 'block' : 'none';
-    };
-    document.getElementById('add-ingredient-btn').onclick = () => {
-      const c = document.getElementById('ingredients-container');
-      const row = document.createElement('div');
-      row.className = 'ingredient-row';
-      row.style.marginBottom = '.5em';
-      const n = document.createElement('input'); n.type='text'; n.className='ingredient-name'; n.placeholder='Nume ingredient'; n.required=true; n.style.width='60%';
-      const q = document.createElement('input'); q.type='number'; q.className='ingredient-qty'; q.placeholder='Cantitate'; q.min='1'; q.required=true; q.style.width='30%'; q.style.marginLeft='1em';
-      row.append(n, q);
-      c.insertBefore(row, document.getElementById('add-ingredient-btn'));
-    };
-  </script>
-
   <!-- PyScript: fetch & render recipes -->
   <py-script>
-import asyncio, json
+import asyncio, json, js
 from pyodide.http import pyfetch
 from js import document, console, alert
+from pyodide.ffi import create_proxy
 
 async def load_recipes():
+    """
+    Fetch recipes from the backend and render recipe cards.
+    """
     out = document.getElementById('output')
     out.innerHTML = '<div class="spinner"></div>'
     try:
@@ -90,35 +74,49 @@ async def load_recipes():
 
     for r in recipes:
         card = document.createElement('div')
-        card.className = 'product-card'
-        # name
+        card.className = 'product-card recipe-card'
+
         h2 = document.createElement('h2')
-        h2.innerText = r['final_name']
+        h2.innerText = f"{r['final_name']} (stoc {r['final_stock']})"
         card.appendChild(h2)
-        # ingredients
-        p = document.createElement('p')
-        parts = []
+
+        ul = document.createElement('ul')
         for ing in r.get('ingredients', []):
-            parts.append(f"{ing['name']} ({ing['quantity']})")
-        p.innerText = 'Ingrediente: ' + ', '.join(parts)
-        card.appendChild(p)
-        # quantity input + produce
-        inp = document.createElement('input'); inp.type='number'; inp.min='1'; inp.value='1'; inp.style.width='60px'; card.appendChild(inp)
-        btn = document.createElement('button'); btn.innerText='Produce'; btn.className='btn btn-primary btn-sm'
-        async def produce(evt, rid=r['id_final'], inp=inp):
+            li = document.createElement('li')
+            li.textContent = f"{ing['name']} – {ing['quantity']} (stoc {ing['stock']})"
+            ul.appendChild(li)
+        card.appendChild(ul)
+
+        # quantity input + produce button
+        actions = document.createElement('div')
+        actions.className = 'recipe-actions'
+
+        inp = document.createElement('input')
+        inp.type = 'number'
+        inp.min = '1'
+        inp.value = '1'
+        actions.appendChild(inp)
+
+        btn = document.createElement('button')
+        btn.innerText = 'Produce'
+        btn.className = 'btn btn-primary btn-sm'
+        btn.type = 'button'             # NEW – avoid default submit
+
+        async def produce(evt, rid=r['id_final'], qty_input=inp):
             try:
-                q = int(inp.value)
+                q = int(qty_input.value)
                 if q < 1:
                     alert('Cantitate invalidă')
                     return
-            except:
+            except Exception:
                 alert('Număr invalid')
                 return
             res = await pyfetch(
                 '/api/employee/productie/produce',
                 method='POST',
-                headers={'Content-Type':'application/json'},
-                body=json.dumps({'recipe_id': rid, 'quantity': q})
+                headers={'Content-Type': 'application/json'},
+                body=json.dumps({'recipe_id': rid, 'quantity': q}),
+                credentials='same-origin'   # NEW – send session cookie
             )
             if res.ok:
                 alert('Done')
@@ -126,36 +124,54 @@ async def load_recipes():
             else:
                 t = await res.text()
                 alert('Error:' + t)
-        btn.addEventListener('click', lambda e: asyncio.ensure_future(produce(e)))
-        card.appendChild(btn)
+
+        from pyodide.ffi import create_proxy   # already imported at top
+        btn.addEventListener(
+            "click",
+            create_proxy(lambda e: asyncio.ensure_future(produce(e)))
+        )
+
+        actions.appendChild(btn)
+        card.appendChild(actions)
+
         out.appendChild(card)
 
-# form submission
 async def submit_new(evt):
+    """
+    Handle POSTing a new recipe to the backend.
+    """
     evt.preventDefault()
     final = document.getElementById('final-name').value.strip()
     if not final:
         alert('Nume invalid')
         return
+
     ingredients = []
     for row in document.querySelectorAll('.ingredient-row'):
         nm = row.querySelector('.ingredient-name').value.strip()
-        qt = int(row.querySelector('.ingredient-qty').value)
+        try:
+            qt = int(row.querySelector('.ingredient-qty').value)
+        except ValueError:
+            qt = 0
+        if not nm or qt < 1:
+            continue
         ingredients.append({'name': nm, 'quantity': qt})
+
     try:
         r = await pyfetch(
             '/api/employee/productie/recipes',
             method='POST',
-            headers={'Content-Type':'application/json'},
+            headers={'Content-Type': 'application/json'},
             body=json.dumps({'final_name': final, 'ingredients': ingredients})
         )
         if r.ok:
             alert('Salvat')
             document.getElementById('recipe-form').reset()
-            document.getElementById('new-recipe-form').style.display='none'
-            # clear extras
+            document.getElementById('recipe-popup').classList.add('hidden')
+            # remove dynamically added ingredient rows (keep the first)
             rows = document.querySelectorAll('.ingredient-row')
-            for i in range(rows.length-1, 0, -1): rows.item(i).remove()
+            for i in range(rows.length - 1, 0, -1):
+                rows.item(i).remove()
             await load_recipes()
         else:
             msg = await r.text()
@@ -164,10 +180,90 @@ async def submit_new(evt):
         console.error('Submit error', e)
         alert('Network error')
 
-# bind submit and initial load
-from js import document as d
+# ----------  STOCK / POP-UP LOGIC  ----------
+products = []
 
-d.getElementById('recipe-form').addEventListener('submit', lambda e: asyncio.ensure_future(submit_new(e)))
+async def load_stock():
+    """Fetch full stock list from backend."""
+    global products
+    try:
+        resp = await pyfetch("/api/stock?final_only=0")
+        if resp.ok:
+            products = await resp.json()
+            console.log(f"Loaded {len(products)} stock rows")
+    except Exception as exc:
+        console.error("Stock fetch error", exc)
+
+def optionize(select, needed_type: str):
+    """
+    Populate the given <select> element with options of the requested type.
+
+    :param select:   A reference to a DOM <select> element
+    :param needed_type: 'final' to list only final products,
+                        'raw'   to list only materiile prime
+    """
+    select.innerHTML = ""
+    for p in products:
+        if (needed_type == "final" and p["type"] == "final") or \
+           (needed_type == "raw" and p["type"] != "final"):
+            opt = document.createElement("option")
+            opt.value = p["name"]
+            opt.textContent = p["name"]
+            select.appendChild(opt)
+
+def new_ingredient_row(evt=None):
+    """
+    Append a new ingredient row to the recipe form.
+    """
+    row = document.createElement("div")
+    row.className = "ingredient-row"
+    row.style.marginBottom = ".5em"
+
+    sel = document.createElement("select")
+    sel.className = "ingredient-name"
+    sel.style.width = "60%"
+    optionize(sel, "raw")
+
+    qty = document.createElement("input")
+    qty.type = "number"
+    qty.min = "1"
+    qty.required = True
+    qty.className = "ingredient-qty"
+    qty.placeholder = "Cantitate"
+    qty.style.width = "30%"
+    qty.style.marginLeft = "1em"
+
+    row.appendChild(sel)
+    row.appendChild(qty)
+    document.getElementById("ingredients-container").appendChild(row)
+
+def show_popup(evt=None):
+    optionize(document.getElementById("final-name"), "final")
+    if document.getElementById("ingredients-container").children.length == 0:
+        new_ingredient_row()
+    document.getElementById("recipe-popup").classList.remove("hidden")
+
+def hide_popup(evt=None):
+    document.getElementById("recipe-popup").classList.add("hidden")
+
+# ---------------- event bindings ------------------
+show_btn  = document.getElementById("show-form-btn")
+close_btn = document.getElementById("close-popup")
+add_ing   = document.getElementById("add-ingredient-btn")
+recipe_frm = document.getElementById("recipe-form")
+
+show_btn.addEventListener("click",  create_proxy(show_popup))
+close_btn.addEventListener("click", create_proxy(hide_popup))
+add_ing.addEventListener("click",   create_proxy(new_ingredient_row))
+js.window.addEventListener(
+    "keydown",
+    create_proxy(lambda e: hide_popup() if e.key == "Escape" else None)
+)
+
+recipe_frm.addEventListener("submit", create_proxy(submit_new))
+
+# ---------- kick‑off ----------
+asyncio.ensure_future(load_stock())
 asyncio.ensure_future(load_recipes())
   </py-script>
 </body>

@@ -1,6 +1,6 @@
 <nav class="navbar">
   <div class="nav-left">
-    {# ---------- Home & Partners (role-aware) ---------- #}
+    {# ---------- Home links ---------- #}
     {% if session.employee %}
       <a href="{{ url_for('employees') }}">Acasă</a>
       <a href="{{ url_for('partners_page') }}">Parteneri</a>
@@ -8,11 +8,17 @@
       <a href="{{ url_for('products_page') }}">Acasă</a>
     {% endif %}
 
-    {# employee quick-login always visible when NOT logged as employee #}
+    {# quick-login buttons (shown when NOT logged as that role) #}
     {% if not session.employee %}
       <button class="btn btn-secondary"
               onclick="window.location='{{ url_for('employee_login') }}'">
         Angajat
+      </button>
+    {% endif %}
+    {% if not session.partner %}
+      <button class="btn btn-secondary"
+              onclick="window.location='{{ url_for('partner_login') }}'">
+        Partener
       </button>
     {% endif %}
   </div>
@@ -22,6 +28,11 @@
       <button class="btn btn-secondary"
               onclick="window.location='{{ url_for('logout') }}'">
         Logout angajat
+      </button>
+    {% elif session.partner %}
+      <button class="btn btn-secondary"
+              onclick="window.location='{{ url_for('logout') }}'">
+        Logout partener
       </button>
     {% elif session.user %}
       <a href="{{ url_for('employees') }}">Angajați</a>
@@ -48,6 +59,8 @@
 
 {% if session.employee %}
   <div class="welcome-banner">Bine ai venit, {{ session.employee }}!</div>
+{% elif session.partner %}
+  <div class="welcome-banner">Bine ai venit, {{ session.partner }}!</div>
 {% elif session.user %}
   <div class="welcome-banner">Bine ai venit, {{ session.user }}!</div>
 {% endif %}
