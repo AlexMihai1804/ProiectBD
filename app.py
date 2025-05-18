@@ -306,20 +306,29 @@ def api_employee_update_order():
 
 @app.route('/api/employee/productie/recipes', methods=['GET'])
 def get_recipes():
-    db = Database()
-    recipes = db.get_recipes()
+    # only production dept may query
+    if session.get('employee_dept') != 'productie':
+        return jsonify({'error': 'Not authorized'}), 403
+
+    recipes = database.get_recipes()
     result = []
-    for recipe in recipes:
+    for recipe in recipes:                      # RealDictRow → dict
         ingredients = []
         for i in range(1, 6):
             material_id = recipe.get(f'id_material{i}')
-            quantity = recipe.get(f'quantity_material{i}')
+            quantity    = recipe.get(f'quantity_material{i}')
             if material_id and quantity:
-                material_name = db._fetchone_scalar("SELECT name FROM stock WHERE id_product = %s", (material_id,))
+                material_name = database._fetchone_scalar(
+                    "SELECT name FROM stock WHERE id_product = %s",
+                    (material_id,)
+                )
                 ingredients.append({"name": material_name, "quantity": quantity})
         result.append({
             "id_final": recipe["id_final"],
-            "final_name": db._fetchone_scalar("SELECT name FROM stock WHERE id_product = %s", (recipe["id_final"],)),
+            "final_name": database._fetchone_scalar(
+                "SELECT name FROM stock WHERE id_product = %s",
+                (recipe["id_final"],)
+            ),
             "ingredients": ingredients
         })
     return jsonify(result)
@@ -344,33 +353,48 @@ def create_recipe():
 
 @app.route('/api/employee/productie/produce', methods=['POST'])
 def produce_product():
-    data = request.get_json()
-    recipe_id = data.get("recipe_id")
-    quantity = data.get("quantity")
+    # only production dept allowed
+    if session.get('employee_dept') != 'productie':
+        return jsonify({'error': 'Not authorized'}), 403
+
+    data       = request.get_json() or {}
+    recipe_id  = data.get("recipe_id")
+    quantity   = data.get("quantity")
 
     if not recipe_id or not quantity or quantity <= 0:
         return jsonify({"error": "Invalid input"}), 400
 
-    db = Database()
-    recipe = db._fetchone_scalar("SELECT * FROM recipes WHERE id_final = %s", (recipe_id,))
+    # fetch the FULL recipe row (need all columns)
+    database.cursor.execute("SELECT * FROM recipes WHERE id_final = %s", (recipe_id,))
+    recipe = database.cursor.fetchone()
     if not recipe:
         return jsonify({"error": "Recipe not found"}), 404
 
     try:
-        with db.connection:
+        with database.connection:
             for i in range(1, 6):
-                material_id = recipe.get(f'id_material{i}')
-                material_quantity = recipe.get(f'quantity_material{i}')
-                if material_id and material_quantity:
-                    total_required = material_quantity * quantity
-                    stock_quantity = db._fetchone_scalar("SELECT quantity FROM stock WHERE id_product = %s", (material_id,))
-                    if stock_quantity < total_required:
+                mat_id   = recipe.get(f'id_material{i}')
+                mat_qty  = recipe.get(f'quantity_material{i}')
+                if mat_id and mat_qty:
+                    need = mat_qty * quantity
+                    have = database._fetchone_scalar(
+                        "SELECT quantity FROM stock WHERE id_product = %s",
+                        (mat_id,)
+                    )
+                    if have < need:
                         raise ValueError("Insufficient stock for material")
-                    db.cursor.execute("UPDATE stock SET quantity = quantity - %s WHERE id_product = %s", (total_required, material_id))
-            db.cursor.execute("UPDATE stock SET quantity = quantity + %s WHERE id_product = %s", (quantity, recipe_id))
+                    database.cursor.execute(
+                        "UPDATE stock SET quantity = quantity - %s WHERE id_product = %s",
+                        (need, mat_id)
+                    )
+            # add produced items
+            database.cursor.execute(
+                "UPDATE stock SET quantity = quantity + %s WHERE id_product = %s",
+                (quantity, recipe_id)
+            )
         return jsonify({"success": True})
     except Exception as e:
-        db.connection.rollback()
+        database.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/admin')
