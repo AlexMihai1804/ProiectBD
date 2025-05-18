@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import traceback
 from datetime import datetime
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
@@ -306,20 +307,29 @@ def api_employee_update_order():
 
 @app.route('/api/employee/productie/recipes', methods=['GET'])
 def get_recipes():
-    db = Database()
-    recipes = db.get_recipes()
+    # only production dept may query
+    if session.get('employee_dept') != 'productie':
+        return jsonify({'error': 'Not authorized'}), 403
+
+    recipes = database.get_recipes()
     result = []
-    for recipe in recipes:
+    for recipe in recipes:                      # RealDictRow → dict
         ingredients = []
         for i in range(1, 6):
             material_id = recipe.get(f'id_material{i}')
-            quantity = recipe.get(f'quantity_material{i}')
+            quantity    = recipe.get(f'quantity_material{i}')
             if material_id and quantity:
-                material_name = db._fetchone_scalar("SELECT name FROM stock WHERE id_product = %s", (material_id,))
+                material_name = database._fetchone_scalar(
+                    "SELECT name FROM stock WHERE id_product = %s",
+                    (material_id,)
+                )
                 ingredients.append({"name": material_name, "quantity": quantity})
         result.append({
             "id_final": recipe["id_final"],
-            "final_name": db._fetchone_scalar("SELECT name FROM stock WHERE id_product = %s", (recipe["id_final"],)),
+            "final_name": database._fetchone_scalar(
+                "SELECT name FROM stock WHERE id_product = %s",
+                (recipe["id_final"],)
+            ),
             "ingredients": ingredients
         })
     return jsonify(result)
@@ -344,33 +354,48 @@ def create_recipe():
 
 @app.route('/api/employee/productie/produce', methods=['POST'])
 def produce_product():
-    data = request.get_json()
-    recipe_id = data.get("recipe_id")
-    quantity = data.get("quantity")
+    # only production dept allowed
+    if session.get('employee_dept') != 'productie':
+        return jsonify({'error': 'Not authorized'}), 403
+
+    data       = request.get_json() or {}
+    recipe_id  = data.get("recipe_id")
+    quantity   = data.get("quantity")
 
     if not recipe_id or not quantity or quantity <= 0:
         return jsonify({"error": "Invalid input"}), 400
 
-    db = Database()
-    recipe = db._fetchone_scalar("SELECT * FROM recipes WHERE id_final = %s", (recipe_id,))
+    # fetch the FULL recipe row (need all columns)
+    database.cursor.execute("SELECT * FROM recipes WHERE id_final = %s", (recipe_id,))
+    recipe = database.cursor.fetchone()
     if not recipe:
         return jsonify({"error": "Recipe not found"}), 404
 
     try:
-        with db.connection:
+        with database.connection:
             for i in range(1, 6):
-                material_id = recipe.get(f'id_material{i}')
-                material_quantity = recipe.get(f'quantity_material{i}')
-                if material_id and material_quantity:
-                    total_required = material_quantity * quantity
-                    stock_quantity = db._fetchone_scalar("SELECT quantity FROM stock WHERE id_product = %s", (material_id,))
-                    if stock_quantity < total_required:
+                mat_id   = recipe.get(f'id_material{i}')
+                mat_qty  = recipe.get(f'quantity_material{i}')
+                if mat_id and mat_qty:
+                    need = mat_qty * quantity
+                    have = database._fetchone_scalar(
+                        "SELECT quantity FROM stock WHERE id_product = %s",
+                        (mat_id,)
+                    )
+                    if have < need:
                         raise ValueError("Insufficient stock for material")
-                    db.cursor.execute("UPDATE stock SET quantity = quantity - %s WHERE id_product = %s", (total_required, material_id))
-            db.cursor.execute("UPDATE stock SET quantity = quantity + %s WHERE id_product = %s", (quantity, recipe_id))
+                    database.cursor.execute(
+                        "UPDATE stock SET quantity = quantity - %s WHERE id_product = %s",
+                        (need, mat_id)
+                    )
+            # add produced items
+            database.cursor.execute(
+                "UPDATE stock SET quantity = quantity + %s WHERE id_product = %s",
+                (quantity, recipe_id)
+            )
         return jsonify({"success": True})
     except Exception as e:
-        db.connection.rollback()
+        database.connection.rollback()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/admin')
@@ -407,31 +432,47 @@ def api_create_product():
 def api_create_employee():
     data = request.get_json(silent=True) or request.form
     print("Employee data received:", data)
-    name       = data.get('name')
-    surname    = data.get('surname')
-    username   = data.get('username')
-    email      = data.get('email')
-    password   = data.get('password')
-    department = data.get('department')
-    phone_number = data.get('phone_number','')
-    address    = data.get('address','')
-    salary    = data.get('salary', type=float)
-    if not all([name, surname, username, email, password, department, phone_number, address, salary]):
-        return jsonify({'error':'Toate campurile sunt obligatorii'}), 400
 
-    # simple password hash
-    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+    # parse salary explicitly
+    try:
+        salary = float(data.get('salary', '').strip())
+    except Exception:
+        salary = None
+
+    name         = data.get('name')
+    surname      = data.get('surname')
+    username     = data.get('username')
+    email        = data.get('email')
+    password     = data.get('password')
+    department   = data.get('department')
+    phone_number = data.get('phone_number','')
+    address      = data.get('address','')
+
+    if not all([name, surname, username, email, password,
+                department, phone_number, address, salary]):
+        return jsonify({'error':'Toate câmpurile sunt obligatorii'}), 400
+
     try:
         database.cursor.execute(
-            "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (name, surname, department, salary, email, phone_number, address, username, pwd_hash)
+            """
+            INSERT INTO employees
+              (name, surname, department, salary,
+               email, phone_number, address,
+               username, password)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (name, surname, department, salary,
+             email, phone_number, address,
+             username, password)
         )
         database.connection.commit()
-        return jsonify({'success':True}), 201
+        return jsonify({'success': True}), 201
 
     except Exception as e:
+        # print full traceback to your terminal
+        traceback.print_exc()
         database.connection.rollback()
+        # also return the exact error so you can see it in the browser
         return jsonify({'error': str(e)}), 500
 
 # -- CUSTOMER ----------------------------------------------------------------
@@ -439,17 +480,21 @@ def api_create_employee():
 def api_create_customer():
     data = request.get_json(silent=True) or request.form
     name     = data.get('name')
+    surname = data.get('surname')
+    username = data.get('username')
     email    = data.get('email')
     password = data.get('password')
-    if not all([name, email, password]):
+    address  = data.get('address','')
+    phone_number   = data.get('phone_number','')
+    if not all([name, surname, username, email, password]):
         return jsonify({'error':'Toate campurile sunt obligatorii'}), 400
 
     # reuse your existing helper if you have one, otherwise do raw INSERT
-    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+    
     try:
         database.cursor.execute(
-            "INSERT INTO customers (name,email,password_hash) VALUES (%s,%s,%s)",
-            (name, email, pwd_hash)
+            "INSERT INTO customers (name, surname, username, email, password, address, phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (name, surname, username, email, password, address, phone_number)
         )
         database.connection.commit()
         return jsonify({'success':True}), 201
@@ -463,18 +508,69 @@ def api_create_customer():
 def api_create_partner():
     data = request.get_json(silent=True) or request.form
     name    = data.get('name')
+    username = data.get('username')
+    password = data.get('password')
     address = data.get('address','')
-    phone   = data.get('phone','')
+    phone_number   = data.get('phone_number','')
+    email = data.get('email','')
     if not name:
         return jsonify({'error':'Nume partener obligatoriu'}), 400
 
     try:
         database.cursor.execute(
-            "INSERT INTO partners (name,address,phone) VALUES (%s,%s,%s)",
-            (name, address, phone)
+            "INSERT INTO partners (name, username, password, address, phone_number, email) VALUES (%s,%s,%s,%s,%s,%s)",
+            (name, username, password, address, phone_number, email)
         )
         database.connection.commit()
         return jsonify({'success':True}), 201
+
+    except Exception as e:
+        database.connection.rollback()
+        return jsonify({'error': str(e)}), 500
+    
+# -- PARTNER -----------------------------------------------------------------
+@app.route('/api/recipes', methods=['POST'])
+def api_create_recipe():
+    data = request.get_json(silent=True) or request.form
+
+    # 1) parse & validate the “final” product
+    try:
+        id_final = int(data.get('id_final'))
+        final_qty = int(data.get('quantity'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'id_final și quantity trebuie numere întregi'}), 400
+
+    # 2) gather up to 5 materiale + cantități
+    materials = []
+    for i in range(1, 6):
+        mat = data.get(f'id_material{i}')
+        qty = data.get(f'quantity_material{i}')
+        if mat and qty:
+            try:
+                materials.append((int(mat), int(qty)))
+            except ValueError:
+                return jsonify({'error': f'Ingredient {i} invalid'}), 400
+        else:
+            # pad with NULLs if missing
+            materials.append((None, None))
+
+    # 3) build column list & values array
+    cols = ['id_final', 'quantity']
+    vals = [id_final, final_qty]
+    for idx, (mid, mqty) in enumerate(materials, start=1):
+        cols.append(f'id_material{idx}')
+        cols.append(f'quantity_material{idx}')
+        vals.append(mid)
+        vals.append(mqty)
+
+    placeholders = ','.join(['%s'] * len(vals))
+    col_sql      = ','.join(cols)
+    sql          = f"INSERT INTO recipes ({col_sql}) VALUES ({placeholders})"
+
+    try:
+        database.cursor.execute(sql, tuple(vals))
+        database.connection.commit()
+        return jsonify({'success': True}), 201
 
     except Exception as e:
         database.connection.rollback()
