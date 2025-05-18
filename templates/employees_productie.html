@@ -2,14 +2,173 @@
 <html lang="ro">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Departament Producție</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
 </head>
 <body>
   {% include '_navbar.html' %}
+
   <div class="main-container">
-    <h2>Departament Producție</h2>
-    <p>Aici gestionezi activitățile de producție.</p>
+    <div class="header-bar">
+      <h1>Rețete disponibile</h1>
+      <button id="show-form-btn" class="btn btn-secondary">Adaugă rețetă nouă</button>
+    </div>
+
+    <!-- New recipe form -->
+    <div id="new-recipe-form" class="card" style="display:none; padding:1em; margin:1em 0;">
+      <h3>Formular rețetă nouă</h3>
+      <form id="recipe-form">
+        <div>
+          <label for="final-name">Produs final:</label><br>
+          <input type="text" id="final-name" required style="width:100%; max-width:400px;"><br><br>
+        </div>
+        <div id="ingredients-container">
+          <label>Ingrediente:</label>
+          <div class="ingredient-row" style="margin-bottom:.5em;">
+            <input type="text" class="ingredient-name" placeholder="Nume ingredient" required style="width:60%;">
+            <input type="number" class="ingredient-qty" placeholder="Cantitate" min="1" required style="width:30%; margin-left:1em;">
+          </div>
+        </div>
+        <button type="button" id="add-ingredient-btn" class="btn btn-link">Adaugă ingredient</button><br><br>
+        <button type="submit" class="btn btn-primary">Salvează rețetă</button>
+      </form>
+    </div>
+
+    <!-- Recipe cards output -->
+    <div id="output" class="product-list">
+      <div class="spinner"></div>
+    </div>
   </div>
+
+  <!-- Toggle and add ingredient JS -->
+  <script>
+    document.getElementById('show-form-btn').onclick = () => {
+      const f = document.getElementById('new-recipe-form');
+      f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    };
+    document.getElementById('add-ingredient-btn').onclick = () => {
+      const c = document.getElementById('ingredients-container');
+      const row = document.createElement('div');
+      row.className = 'ingredient-row';
+      row.style.marginBottom = '.5em';
+      const n = document.createElement('input'); n.type='text'; n.className='ingredient-name'; n.placeholder='Nume ingredient'; n.required=true; n.style.width='60%';
+      const q = document.createElement('input'); q.type='number'; q.className='ingredient-qty'; q.placeholder='Cantitate'; q.min='1'; q.required=true; q.style.width='30%'; q.style.marginLeft='1em';
+      row.append(n, q);
+      c.insertBefore(row, document.getElementById('add-ingredient-btn'));
+    };
+  </script>
+
+  <!-- PyScript: fetch & render recipes -->
+  <py-script>
+import asyncio, json
+from pyodide.http import pyfetch
+from js import document, console, alert
+
+async def load_recipes():
+    out = document.getElementById('output')
+    out.innerHTML = '<div class="spinner"></div>'
+    try:
+        resp = await pyfetch('/api/employee/productie/recipes')
+        console.log('Fetch status', resp.status)
+        if not resp.ok:
+            out.innerText = f'Error: {resp.status}'
+            return
+        recipes = await resp.json()
+    except Exception as e:
+        console.error('Fetch error', e)
+        out.innerText = 'Network error'
+        return
+
+    out.innerHTML = ''
+    if not recipes:
+        out.innerText = 'Nu există rețete.'
+        return
+
+    for r in recipes:
+        card = document.createElement('div')
+        card.className = 'product-card'
+        # name
+        h2 = document.createElement('h2')
+        h2.innerText = r['final_name']
+        card.appendChild(h2)
+        # ingredients
+        p = document.createElement('p')
+        parts = []
+        for ing in r.get('ingredients', []):
+            parts.append(f"{ing['name']} ({ing['quantity']})")
+        p.innerText = 'Ingrediente: ' + ', '.join(parts)
+        card.appendChild(p)
+        # quantity input + produce
+        inp = document.createElement('input'); inp.type='number'; inp.min='1'; inp.value='1'; inp.style.width='60px'; card.appendChild(inp)
+        btn = document.createElement('button'); btn.innerText='Produce'; btn.className='btn btn-primary btn-sm'
+        async def produce(evt, rid=r['id_final'], inp=inp):
+            try:
+                q = int(inp.value)
+                if q < 1:
+                    alert('Cantitate invalidă')
+                    return
+            except:
+                alert('Număr invalid')
+                return
+            res = await pyfetch(
+                '/api/employee/productie/produce',
+                method='POST',
+                headers={'Content-Type':'application/json'},
+                body=json.dumps({'recipe_id': rid, 'quantity': q})
+            )
+            if res.ok:
+                alert('Done')
+                await load_recipes()
+            else:
+                t = await res.text()
+                alert('Error:' + t)
+        btn.addEventListener('click', lambda e: asyncio.ensure_future(produce(e)))
+        card.appendChild(btn)
+        out.appendChild(card)
+
+# form submission
+async def submit_new(evt):
+    evt.preventDefault()
+    final = document.getElementById('final-name').value.strip()
+    if not final:
+        alert('Nume invalid')
+        return
+    ingredients = []
+    for row in document.querySelectorAll('.ingredient-row'):
+        nm = row.querySelector('.ingredient-name').value.strip()
+        qt = int(row.querySelector('.ingredient-qty').value)
+        ingredients.append({'name': nm, 'quantity': qt})
+    try:
+        r = await pyfetch(
+            '/api/employee/productie/recipes',
+            method='POST',
+            headers={'Content-Type':'application/json'},
+            body=json.dumps({'final_name': final, 'ingredients': ingredients})
+        )
+        if r.ok:
+            alert('Salvat')
+            document.getElementById('recipe-form').reset()
+            document.getElementById('new-recipe-form').style.display='none'
+            # clear extras
+            rows = document.querySelectorAll('.ingredient-row')
+            for i in range(rows.length-1, 0, -1): rows.item(i).remove()
+            await load_recipes()
+        else:
+            msg = await r.text()
+            alert('Error:' + msg)
+    except Exception as e:
+        console.error('Submit error', e)
+        alert('Network error')
+
+# bind submit and initial load
+from js import document as d
+
+d.getElementById('recipe-form').addEventListener('submit', lambda e: asyncio.ensure_future(submit_new(e)))
+asyncio.ensure_future(load_recipes())
+  </py-script>
 </body>
 </html>

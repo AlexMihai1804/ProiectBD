@@ -1,8 +1,9 @@
 <nav class="navbar">
   <div class="nav-left">
-    {# ---------- Home (role-aware) ---------- #}
+    {# ---------- Home & Partners (role-aware) ---------- #}
     {% if session.employee %}
       <a href="{{ url_for('employees') }}">Acasă</a>
+      <a href="{{ url_for('partners_page') }}">Parteneri</a>
     {% else %}
       <a href="{{ url_for('products_page') }}">Acasă</a>
     {% endif %}
@@ -46,7 +47,7 @@
 </nav>
 
 {% if session.employee %}
-<div class="welcome-banner">Bine ai venit, {{ session.employee }}!</div>
+  <div class="welcome-banner">Bine ai venit, {{ session.employee }}!</div>
 {% elif session.user %}
-<div class="welcome-banner">Bine ai venit, {{ session.user }}!</div>
+  <div class="welcome-banner">Bine ai venit, {{ session.user }}!</div>
 {% endif %}

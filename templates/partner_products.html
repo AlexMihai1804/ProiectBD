@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Produse partener</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+
+  <div class="main-container">
+    <div class="header-bar">
+      <h1>Produse partener: {{ partner_name }}</h1>
+    </div>
+    <div id="output" class="product-list">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+<py-script>
+import asyncio
+from pyodide.http import pyfetch
+from js import document, console
+
+# Jinja injects this integer
+partner_id = {{ partner_id }}
+
+async def load_partner_products():
+    out = document.getElementById("output")
+    try:
+        resp = await pyfetch(f"/api/partners/{partner_id}/products")
+        if not resp.ok:
+            out.innerText = (
+                "Nu sunt produse pentru acest partener."
+                if resp.status == 404
+                else f"Eroare server ({resp.status})"
+            )
+            return
+        prods = await resp.json()
+        out.innerHTML = ""
+        for prod in prods:
+            card = document.createElement("div")
+            card.className = "product-card"
+
+            # 1) Product name as a heading
+            h2 = document.createElement("h2")
+            h2.innerText = prod["name"]
+            card.appendChild(h2)
+
+            # 2) Price on its own line
+            p_price = document.createElement("p")
+            p_price.innerText = f"Pret: {prod['price']} RON"
+            card.appendChild(p_price)
+
+            # 3) Quantity on its own line
+            p_qty = document.createElement("p")
+            p_qty.innerText = f"Cantitate: {prod.get('quantity','?')}"
+            card.appendChild(p_qty)
+
+            out.appendChild(card)
+    except Exception as e:
+        console.error("Fetch error:", e)
+        out.innerText = f"Eroare rețea: {e}"
+
+# kick it off
+asyncio.ensure_future(load_partner_products())
+</py-script>
+
+</body>
+</html>

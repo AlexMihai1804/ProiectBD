@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Parteneri</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+
+  <div class="main-container">
+    <div class="header-bar">
+      <h1>Parteneri</h1>
+    </div>
+    <div id="output" class="product-list">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  {% raw %}
+  <py-script>
+import asyncio
+from pyodide.http import pyfetch
+from js import document, console
+
+async def load_partners():
+    out = document.getElementById("output")
+    try:
+        resp = await pyfetch("/api/partners")
+        if not resp.ok:
+            out.innerText = (
+                "Nu sunt parteneri." if resp.status == 404
+                else f"Eroare server ({resp.status})"
+            )
+            return
+        partners = await resp.json()
+        out.innerHTML = ""
+        for p in partners:
+            # Card container
+            card = document.createElement("div")
+            card.className = "product-card"
+
+            # Name
+            title = document.createElement("h2")
+            title.innerText = p['name']
+            card.appendChild(title)
+
+            # Details: address, phone, email
+            for field, label in ("address", "Adresă"), ("phone_number", "Telefon"), ("email", "E-mail"):
+                info = document.createElement("p")
+                info.innerText = f"{label}: {p.get(field, 'N/A')}"
+                card.appendChild(info)
+
+            # Link to partner products
+            link = document.createElement("a")
+            link.href = f"/partners/{p['id_partner']}/products"
+            link.innerText = "Vezi produse"
+            link.className = "btn btn-link"
+            card.appendChild(link)
+
+            out.appendChild(card)
+    except Exception as e:
+        console.error("Fetch error:", e)
+        out.innerText = f"Eroare rețea: {e}"
+
+# Kick off on load
+asyncio.ensure_future(load_partners())
+  </py-script>
+  {% endraw %}
+</body>
+</html>
