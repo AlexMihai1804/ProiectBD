@@ -272,7 +272,21 @@ def api_place_order():
 
 @app.route('/partners')
 def partners_page():
-    return render_template('partners.html')
+    # -- trebuie să fii logat ca partener --
+    if 'partner' not in session:
+        return redirect(url_for('partner_login'))
+
+    # extrage id-ul partenerului curent
+    partner_id = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],),               # username salvat în sesiune
+        key='id_partner'
+    )
+    if not partner_id:
+        return "Partener inexistent", 404
+
+    # trimite id-ul în template
+    return render_template('partners.html', partner_id=partner_id)
 
 # API endpoint to list partners
 @app.route('/api/partners')
@@ -307,33 +321,37 @@ def api_partner_products(partner_id):
 def api_set_partner_products(partner_id):
     # only the logged-in partner may update their prices
     partner = database.get_partner(partner_id)
-    if not partner or session.get('partner') != partner['username']:
-        return jsonify({'error': 'Not authorized'}), 403
+    # compare usernames case-insensitively
+    if not partner or session.get('partner', '').lower() != partner['username'].lower():
+         return jsonify({'error': 'Not authorized'}), 403
 
     data   = request.get_json() or {}
     prices = data.get('prices', [])
+
     for item in prices:
-        pid   = item.get('id_product')
+        pid   = item.get('id_product')   # ← acesta este id_stock
         price = item.get('price')
-        # update existing
+
+        # există deja rând pt (id_stock, id_partner) ?
         database.cursor.execute(
-            "SELECT 1 FROM partner_products WHERE id_product=%s AND id_partner=%s",
+            "SELECT id_product FROM partner_products "
+            "WHERE id_stock=%s AND id_partner=%s",
             (pid, partner_id)
         )
         if database.cursor.fetchone():
             database.cursor.execute(
                 "UPDATE partner_products "
                 "SET price=%s "
-                "WHERE id_product=%s AND id_partner=%s",
+                "WHERE id_stock=%s AND id_partner=%s",
                 (price, pid, partner_id)
             )
         else:
-            # insert new with zero quantity
             database.cursor.execute(
-                "INSERT INTO partner_products "
-                "(id_stock, price, quantity, id_partner) VALUES (%s, %s, %s, %s)",
+                "INSERT INTO partner_products (id_stock, price, quantity, id_partner) "
+                "VALUES (%s, %s, %s, %s)",
                 (pid, price, 0, partner_id)
             )
+
     database.connection.commit()
     return jsonify({'success': True})
 
