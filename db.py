@@ -367,7 +367,9 @@ class Database:
 
     def verify_partner(self, username, password):
         self.cursor.execute(
-            "SELECT 1 FROM partners WHERE LOWER(username)=LOWER(%s) AND password=%s",
+            "SELECT 1 FROM partners "
+            "WHERE LOWER(username)=LOWER(%s) "
+            "  AND LOWER(password)=LOWER(%s)",
             (username, password)
         )
         return self.cursor.fetchone() is not None

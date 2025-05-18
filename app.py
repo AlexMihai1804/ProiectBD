@@ -135,7 +135,7 @@ def employees_productie():
     return render_template('employees_productie.html')
 
 # --------------------------------------------------
-#  AUTH ROUTES (CUSTOMER & EMPLOYEE)
+#  AUTH ROUTES (CUSTOMER & EMPLOYEE & PARTNER)
 # --------------------------------------------------
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -191,6 +191,19 @@ def employee_login():
             return redirect(url_for('employees'))
         error = 'Date invalide'
     return render_template('employee_login.html', error=error)
+
+@app.route('/partner_login', methods=['GET', 'POST'])
+def partner_login():
+    error = None
+    if request.method == 'POST':
+        uname = request.form['username'].strip().lower()
+        pwd   = request.form['password']
+        if database.verify_partner(uname, pwd):
+            session.clear()
+            session['partner'] = uname          # mark partner session
+            return redirect(url_for('partners_page'))
+        error = 'Date invalide'
+    return render_template('partner_login.html', error=error)
 
 @app.route('/logout')
 def logout():
@@ -287,6 +300,41 @@ def api_partner_products(partner_id):
     if prods is None:
         return jsonify({'error': 'Partner not found'}), 404
     return jsonify(prods)
+
+# NEW: accept POST to update/insert partner_products prices
+@app.route('/api/partners/<int:partner_id>/products', methods=['POST'])
+def api_set_partner_products(partner_id):
+    # only the logged-in partner may update their prices
+    partner = database.get_partner(partner_id)
+    if not partner or session.get('partner') != partner['username']:
+        return jsonify({'error': 'Not authorized'}), 403
+
+    data   = request.get_json() or {}
+    prices = data.get('prices', [])
+    for item in prices:
+        pid   = item.get('id_product')
+        price = item.get('price')
+        # update existing
+        database.cursor.execute(
+            "SELECT 1 FROM partner_products WHERE id_product=%s AND id_partner=%s",
+            (pid, partner_id)
+        )
+        if database.cursor.fetchone():
+            database.cursor.execute(
+                "UPDATE partner_products "
+                "SET price=%s "
+                "WHERE id_product=%s AND id_partner=%s",
+                (price, pid, partner_id)
+            )
+        else:
+            # insert new with zero quantity
+            database.cursor.execute(
+                "INSERT INTO partner_products "
+                "(id_stock, price, quantity, id_partner) VALUES (%s, %s, %s, %s)",
+                (pid, price, 0, partner_id)
+            )
+    database.connection.commit()
+    return jsonify({'success': True})
 
 # --------------------------------------------------
 #  EMPLOYEE (SALES) APIs
