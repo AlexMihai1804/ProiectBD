@@ -14,11 +14,19 @@
     <table id="stk" class="orders-table">
       <thead>
         <tr>
-          <th>ID</th><th>Produs</th><th>Stoc</th><th>Cumpără</th>
-          <th>Cea mai bună ofertă (RON)</th><th>Partener</th>
+          <th>ID</th>
+          <th>Produs</th>
+          <th>Stoc</th>
+          <th>Cumpără</th>
+          <th>Cea mai bună ofertă (RON)</th>
+          <th>Partener</th>
         </tr>
       </thead>
-      <tbody><tr><td colspan="6" style="text-align:center">Loading…</td></tr></tbody>
+      <tbody>
+        <tr>
+          <td colspan="6" style="text-align:center">Loading…</td>
+        </tr>
+      </tbody>
     </table>
   </div>
 
@@ -30,42 +38,6 @@ from pyodide.ffi import create_proxy
 import asyncio, json
 
 tbody = document.querySelector("#stk tbody")
-
-def row(item):
-    tr = document.createElement("tr")
-
-    # id & name ----------------------------------------------------------
-    for key in ("id_product", "name"):
-        td = document.createElement("td")
-        td.textContent = item[key]
-        tr.appendChild(td)
-
-    # current stock ------------------------------------------------------
-    td_stock = document.createElement("td")
-    td_stock.style.textAlign = "center"
-    td_stock.textContent = item["quantity"]
-    tr.appendChild(td_stock)
-
-    # input for purchase -------------------------------------------------
-    inp = document.createElement("input")
-    inp.type = "number"
-    inp.min = "0"
-    inp.step = "1"
-    inp.value = "0"
-    inp.style.width = "70px"; inp.dataset.pid = item["id_product"]
-    td_qty = document.createElement("td")
-    td_qty.style.textAlign = "center"
-    td_qty.appendChild(inp)
-    tr.appendChild(td_qty)
-
-    # cheapest price & partner ------------------------------------------
-    for key in ("partner_price", "partner_name"):
-        td = document.createElement("td")
-        td.style.textAlign = "center"
-        td.textContent = item.get(key, "-")
-        tr.appendChild(td)
-
-    return tr
 
 async def fetch_data():
     resp = await pyfetch("/api/achizitii/stock")
@@ -80,45 +52,78 @@ async def refresh():
     if not isinstance(data, list):
         tbody.innerHTML = f"<tr><td colspan='6'>{data.get('error','Eroare')}</td></tr>"
         return
-    for it in data:
-        tbody.appendChild(row(it))
+    for item in data:
+        tbody.appendChild(row(item))
 
 async def send_order(evt):
     evt.preventDefault()
     items = []
     for inp in tbody.querySelectorAll("input[type='number']"):
-        try: q=int(inp.value)
-        except: q=0
-        if q>0:
+        try: q = int(inp.value)
+        except: q = 0
+        if q > 0:
             items.append([int(inp.dataset.pid), q])
     if not items:
-        window.alert("Selectează cantități!"); return
-    r = await pyfetch(
+        window.alert("Selectează cantități!")
+        return
+    resp = await pyfetch(
         "/api/achizitii/place_order",
         method="POST",
         headers={"Content-Type":"application/json"},
-        body=json.dumps({"items":items})
+        body=json.dumps({"items": items})
     )
-    res = await r.json()
-    window.alert("Trimis!" if res.get("success") else res.get("error","Eroare"))
+    result = await resp.json()
+    window.alert("Trimis!" if result.get("success") else result.get("error","Eroare"))
     await refresh()
 
+# Helper to build table rows
+from js import document
+
+def row(item):
+    tr = document.createElement("tr")
+    # ID and name
+    for key in ("id_product", "name"):
+        td = document.createElement("td")
+        td.textContent = item[key]
+        tr.appendChild(td)
+    # stock
+    td_stock = document.createElement("td")
+    td_stock.style.textAlign = "center"
+    td_stock.textContent = item.get("quantity", 0)
+    tr.appendChild(td_stock)
+    # input
+    inp = document.createElement("input")
+    inp.type = "number"
+    inp.min = "0"
+    inp.step = "1"
+    inp.value = "0"
+    inp.style.width = "70px"
+    inp.dataset.pid = item["id_product"]
+    td_qty = document.createElement("td")
+    td_qty.style.textAlign = "center"
+    td_qty.appendChild(inp)
+    tr.appendChild(td_qty)
+    # price and partner
+    for key in ("partner_price", "partner_name"):
+        td = document.createElement("td")
+        td.style.textAlign = "center"
+        td.textContent = item.get(key, "-")
+        tr.appendChild(td)
+    return tr
+
+# Initialize
 asyncio.ensure_future(refresh())
 
-# use the already-in-HTML button instead of creating one
+# Hook up button
 btn = document.getElementById("procure-btn")
 btn.addEventListener("click", create_proxy(send_order))
   </py-script>
   {% endraw %}
 
-<!-- fixed navigation button -->
-<div style="margin:20px 0; text-align:right">
-  <button id="procure-btn" class="btn btn-primary">Plasează achiziție</button>ced -->
-  <button class="btn btn-secondary"
-          onclick="window.location='/employees/achizitii/orders'">btn btn-primary">Plasează achiziție</button>
-    Vezi comenzi parteneri
-  </button>location='/employees/achizitii/orders'">
-</div>menzi parteneri
-tton>
-</body></div>
-</html></html>
+  <!-- Navigation buttons -->
+  <div style="margin:20px 0; text-align:center">
+    <button id="procure-btn" class="btn btn-primary">Plasează achiziție</button>
+    <button class="btn btn-secondary" onclick="window.location='/employees/achizitii/orders'">Vezi comenzi parteneri</button>
+  </div>
+</body>
+</html>

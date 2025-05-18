@@ -271,8 +271,38 @@ class Database:
     def get_partners(self):
         self.cursor.execute("SELECT * FROM partners")
         return self.cursor.fetchall()
+    
+    def get_partner(self, partner_id):
+        self.cursor.execute(
+            "SELECT * FROM partners WHERE id_partner = %s",
+            (partner_id,)
+        )
+        return self.cursor.fetchone()
+    
+    def get_partner_products(self, partner_id: int):
+        """
+        Return a list of dicts like
+          { 'id_product': 1, 'name': 'Laptop', 'price': 2600.0, 'quantity': 5 }
+        for every row in partner_products joined to stock.
+        """
+        sql = """
+        SELECT
+          pp.id_stock   AS id_product,
+          s.name        AS name,
+          pp.price      AS price,
+          pp.quantity   AS quantity
+        FROM partner_products pp
+        JOIN stock s
+          ON pp.id_stock = s.id_product
+        WHERE pp.id_partner = %s
+        """
+        # execute the query
+        self.cursor.execute(sql, (partner_id,))
+        rows = self.cursor.fetchall()  # list of tuples
+        # Directly return the rows as they are already RealDictRow objects
+        return rows
 
-    def get_partner_products(self):
+    def get_partners_products(self):
         self.cursor.execute("SELECT * FROM partner_products")
         return self.cursor.fetchall()
 
@@ -541,6 +571,19 @@ class Database:
             "ON CONFLICT (username) DO NOTHING",
             achizitii
         )
+        
+        
+        # always ensure productie employees exist
+        productie = [
+            ("Calin", "Poenaru", "productie", 4000.00, "calin@ex.com", "0736231231", "Str. C 3", "calin_p", "pass123"),
+            ("Sana",   "Alexa",  "productie", 4050.00, "sana@ex.com",  "0745213213", "Str. D 4", "sana_a", "pass123")
+        ]
+        self.cursor.executemany(
+            "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (username) DO NOTHING",
+            productie
+        )
 
         # seed customers
         if self._fetchone_scalar("SELECT COUNT(*) FROM customers") == 0:
@@ -625,8 +668,9 @@ class Database:
         # seed recipes
         if self._fetchone_scalar("SELECT COUNT(*) FROM recipes") == 0:
             # final product id 1 made from product ids 2 and 3
+            print("Inserting dummy recipe data...")
             self.cursor.execute(
-                "INSERT INTO recipes (id_final,quantitiy,id_material1,quantity_material1,"
+                "INSERT INTO recipes (id_final,quantity,id_material1,quantity_material1,"
                 "id_material2,quantity_material2) VALUES (%s,%s,%s,%s,%s,%s)",
                 (1, 1, 2, 2, 3, 1)
             )
@@ -683,7 +727,7 @@ class Database:
                             (item['quantity'], item['id_product'])
                         )
                 self.cursor.execute(
-                    "UPDATE orders SET progress=%s WHERE id_order=%s",
+                    "UPDATE orders SET progress = %s WHERE id_order = %s",
                     (new_status, order_id)
                 )
             return {'success': True}
@@ -841,3 +885,49 @@ class Database:
         except Exception as e:
             self.connection.rollback()
             return{"error" : str(e)}
+
+    def add_recipe(self, final_name: str, ingredients: list[dict]):
+        """
+        ingredients: [{ 'name': <stock name>, 'quantity': <int> }, …]
+        """
+        try:
+            with self.connection:
+                # 1) find the product ID for the final item
+                id_final = self._fetchone_scalar(
+                    "SELECT id_product FROM stock WHERE name = %s",
+                    (final_name,)
+                )
+                if not id_final:
+                    return {'success': False, 'error': 'Final product not found'}
+
+                # 2) build column lists for up to 5 ingredients
+                cols = ['id_final']
+                vals = [id_final]
+                for idx, ing in enumerate(ingredients[:5], start=1):
+                    # look up the ingredient’s product ID
+                    mat_id = self._fetchone_scalar(
+                        "SELECT id_product FROM stock WHERE name = %s",
+                        (ing['name'],)
+                    )
+                    if not mat_id:
+                        raise ValueError(f"Ingredient not found: {ing['name']}")
+                    cols += [f"id_material{idx}", f"quantity_material{idx}"]
+                    vals += [mat_id, ing['quantity']]
+
+                # pad remaining slots with NULL
+                for idx in range(len(ingredients)+1, 6):
+                    cols += [f"id_material{idx}", f"quantity_material{idx}"]
+                    vals += [None, None]
+
+                # 3) insert into recipes table
+                col_sql  = ", ".join(cols)
+                ph_sql   = ", ".join(["%s"] * len(vals))
+                sql      = f"INSERT INTO recipes ({col_sql}) VALUES ({ph_sql})"
+                self.cursor.execute(sql, tuple(vals))
+
+            return {'success': True, 'recipe_id': id_final}
+
+        except Exception as e:
+            # any error rolls back automatically via with self.connection
+            return {'success': False, 'error': str(e)}
+
