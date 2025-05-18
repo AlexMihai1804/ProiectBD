@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  
   <title>Produse</title>
 
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -12,22 +13,11 @@
 </head>
 <body>
   {% include '_navbar.html' %}
-
   <div class="main-container">
-    <div class="header-bar">
-      <h1>Produse</h1>
-      {% if session.user %}
-      <!-- logged in: keep original ID so popup JS binds -->
-      <button id="order-btn" type="button" class="btn btn-primary">Plasează comanda</button>
-      {% else %}
-      <!-- not logged in: redirect to login -->
-      <button id="login-btn" type="button" class="btn btn-primary"
-              onclick="alert('Trebuie să te loghezi!'); window.location='{{ url_for('login') }}'">
-        Plasează comanda
-      </button>
-      {% endif %}
+    <div class="header-bar" style="justify-content: center;">
+      <h1 style="text-align: center; width: 100%;">Produse</h1>
     </div>
-    <div id="output" class="product-list"><div class="spinner"></div></div>
+    <div id="output" class="product-list" style="display: grid; grid-template-columns: repeat(2, 420px); gap: 1.25rem; justify-content: center;"><div class="spinner"></div></div>
   </div>
 
   <!-- Popup pentru detalii comandă -->
