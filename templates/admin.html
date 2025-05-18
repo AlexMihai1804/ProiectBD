@@ -2,23 +2,29 @@
 <html lang="ro">
 <head>
   <meta charset="UTF-8">
+  <div style="text-align: center; margin-top: 20px;">
   <title>Panou Admin</title>
   <style>
     .entity-form { display: none; margin-top: 1em; }
   </style>
 </head>
 <body>
-  <h1>Panou Admin</h1>
-
-  <label for="entity-select">Alege ce vrei să adaugi:</label>
-  <select id="entity-select">
-    <option value="">-- Selectează entitate --</option>
-    <option value="product">Produs</option>
-    <option value="employee">Angajat</option>
-    <option value="customer">Client</option>
-    <option value="partner">Partener</option>
-    <option value="recipe">Rețetă</option>
-  </select>
+  <link rel="stylesheet" href="/static/style.css">
+  <h1><margin = "center">Panou Admin</h1>
+  
+  <div style="display: flex; justify-content: center; align-items: center; margin-top: 20px;">
+  <div style="text-align: center; width: 300px;">
+    <label for="entity-select">Alege ce vrei să adaugi:</label>
+    <select id="entity-select" style="width: 100%; padding: 5px;">
+      <option value="">-- Selectează entitate --</option>
+      <option value="product">Produs</option>
+      <option value="employee">Angajat</option>
+      <option value="customer">Client</option>
+      <option value="partner">Partener</option>
+      <option value="recipe">Rețetă</option>
+    </select>
+  </div>
+</div>
 
   <div id="form-container">
     <!-- Produs -->
@@ -29,7 +35,7 @@
       <label>Descriere: <textarea name="description"></textarea></label><br>
       <label>Stoc:      <input name="quantity" type="number" min="0" required></label><br>
       <label>Tip:       <input name="type" value="final"></label><br>
-      <button type="submit">Salvează Produs</button>
+      <button id="submit" type="button" class="btn btn-primary">Salvează Produs</button>
     </form>
 
     <!-- Angajat -->

@@ -15,6 +15,10 @@
         Angajat
       </button>
     {% endif %}
+
+    {% if session.user %}
+      <button id="order-btn" type="button" class="btn btn-primary">Plasează comanda</button>
+    {% endif %}
   </div>
 
   <div class="nav-right">
@@ -24,15 +28,30 @@
         Logout angajat
       </button>
     {% elif session.user %}
-      <a href="{{ url_for('employees') }}">Angajați</a>
       <div class="dropdown">
-        <button class="dropbtn">{{ session.user }}</button>
+        <button class="dropbtn" onclick="this.classList.toggle('active'); this.nextElementSibling.classList.toggle('show');">{{ session.user }}</button>
         <div class="dropdown-content">
           <a href="{{ url_for('orders') }}">Istoric comenzi</a>
           <a href="{{ url_for('profile') }}">Date personale</a>
           <a href="{{ url_for('logout') }}">Logout</a>
         </div>
       </div>
+      <style>
+        .dropdown-content { display: none; position: relative ; background: #ff7a5b; min-width: 160px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); z-index: 1; }
+        .dropdown-content.show { display: block; }
+        .dropbtn.active { background: var(--clr-primary-dark); }
+      </style>
+      <script>
+        document.addEventListener('click', function(e) {
+          var btn = document.querySelector('.dropbtn');
+          var content = document.querySelector('.dropdown-content');
+          if (!btn || !content) return;
+          if (!btn.contains(e.target) && !content.contains(e.target)) {
+            btn.classList.remove('active');
+            content.classList.remove('show');
+          }
+        });
+      </script>
     {% else %}
       <button class="btn btn-secondary signin-btn"
               onclick="window.location='{{ url_for('login') }}'">
@@ -43,11 +62,17 @@
         Create Account
       </button>
     {% endif %}
+
+    {% if request.endpoint == 'employees_productie' and session.employee %}
+      <button id="show-form-btn" class="btn btn-secondary" style="margin-left: 1rem;">Adaugă rețetă nouă</button>
+    {% endif %}
   </div>
 </nav>
+  
 
 {% if session.employee %}
   <div class="welcome-banner">Bine ai venit, {{ session.employee }}!</div>
 {% elif session.user %}
   <div class="welcome-banner">Bine ai venit, {{ session.user }}!</div>
 {% endif %}
+
