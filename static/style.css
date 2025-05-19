@@ -1,14 +1,15 @@
 body {
   margin: 0;
   font-family: Arial, sans-serif;
-  background: #f1f3f5;
+  background: #181a1b;
+  color: #e0e0e0;
 }
 
 .navbar {
   display: flex;
   align-items: center;
   padding: 10px;
-  background: #343a40;
+  background: #23272a;
 }
 
 .navbar .nav-left,
@@ -27,13 +28,22 @@ body {
   color: #fff;
   text-decoration: none;
   margin-right: 15px;
-  padding: 6px 12px;
-  border-radius: 4px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #2d3748 60%, #3a4252 100%);
+  border: 1.5px solid #3a4252;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18), 0 1.5px 4px rgba(0,123,255,0.08);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: background 0.2s, box-shadow 0.2s, border 0.2s, color 0.2s;
 }
 
 .navbar a:hover,
 .navbar .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(90deg, #007bff 60%, #0056b3 100%);
+  color: #fff;
+  border: 1.5px solid #007bff;
+  box-shadow: 0 4px 16px rgba(0,123,255,0.18), 0 2px 8px rgba(0,0,0,0.22);
 }
 
 .signin-btn {
@@ -50,46 +60,56 @@ body {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.9rem;
+  background: #23272a;
+  color: #fff;
+  transition: background 0.2s;
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, #007bff, #0056b3);
+  background: linear-gradient(90deg, #0056b3, #23272a);
   color: #fff;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(90deg, #0056b3, #004085);
+  background: linear-gradient(90deg, #007bff, #0056b3);
 }
 
 .btn-secondary {
-  background-color: #6c757d;
+  background-color: #444950;
   color: #fff;
 }
 
 .btn-secondary:hover {
-  background-color: #5a6268;
+  background-color: #343a40;
 }
 
 .login-container {
   max-width: 400px;
   margin: 80px auto;
   padding: 20px;
-  background: #fff;
+  background: #23272a;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.7);
 }
 
 .login-container h2 {
   margin-bottom: 16px;
   text-align: center;
+  color: #fff;
 }
 
 .login-container input {
-  width: 100%;
+  width: 95%;
   padding: 8px;
-  margin-bottom: 12px;
-  border: 1px solid #ced4da;
+  margin-bottom: 22px; 
+  border: 1px solid #444950;
   border-radius: 4px;
+  background: #181a1b;
+  color: #e0e0e0;
+}
+
+.login-container > *:not(:last-child) {
+  margin-bottom: 18px;
 }
 
 .product-list {
@@ -101,28 +121,30 @@ body {
 
 .product-card {
   flex: 1 1 calc(33% - 16px);
-  background: #fff;
-  border: 1px solid #dee2e6;
+  background: #23272a;
+  border: 1px solid #444950;
   border-radius: 6px;
   padding: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .product-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.7);
 }
 
 .product-card input {
   width: 60px;
   padding: 4px;
-  border: 1px solid #ced4da;
+  border: 1px solid #444950;
   border-radius: 4px;
   margin-left: 8px;
+  background: #181a1b;
+  color: #e0e0e0;
 }
 
 .product-card span {
@@ -135,7 +157,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(24,26,27,0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,12 +176,13 @@ body {
 
 .popup-content {
   width: 300px;
-  background: #fff;
+  background: #23272a;
   padding: 20px;
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.7);
   transform: translateY(-20px);
   transition: transform 0.3s ease;
+  color: #e0e0e0;
 }
 
 .popup:not(.hidden) .popup-content {
@@ -175,8 +198,10 @@ body {
   width: 100%;
   padding: 6px;
   margin-top: 4px;
-  border: 1px solid #ced4da;
+  border: 1px solid #444950;
   border-radius: 4px;
+  background: #181a1b;
+  color: #e0e0e0;
 }
 
 .popup-content button {
@@ -184,7 +209,7 @@ body {
 }
 
 .welcome-banner {
-  background: #28a745;
+  background: #218838;
   color: #fff;
   padding: 12px 20px;
   text-align: center;
@@ -196,14 +221,16 @@ body {
   max-width: 960px;
   margin: 20px auto;
   padding: 25px 15px;
-  background: #fff;
+  background: #23272a;
   border-radius: 6px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.7);
+  color: #e0e0e0;
 }
 
 .main-container h2 {
   margin-top: 0;
   margin-bottom: 20px;
+  color: #fff;
 }
 
 .main-container > .btn,
@@ -231,9 +258,9 @@ body {
   position: absolute;
   right: 0;
   top: 100%;
-  background: #fff;
+  background: #23272a;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.7);
   min-width: 180px;
   z-index: 1000;
   overflow: hidden;
@@ -247,18 +274,18 @@ body {
 .dropdown-content a {
   display: block;
   padding: 10px 16px;
-  color: #343a40;
+  color: #e0e0e0;
   text-decoration: none;
   transition: background 0.2s;
 }
 
 .dropdown-content a:hover {
-  background: #f1f3f5;
-  color: #333;
+  background: #23272a;
+  color: #fff;
 }
 
 .dropdown:hover .dropbtn {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.08);
   border-radius: 4px;
 }
 
@@ -273,12 +300,13 @@ body {
 .header-bar h1 {
   margin: 0;
   font-size: 1.6rem;
+  color: #fff;
 }
 
 .spinner {
   width: 48px;
   height: 48px;
-  border: 6px solid #f3f3f3;
+  border: 6px solid #23272a;
   border-top: 6px solid #007bff;
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -319,7 +347,7 @@ body {
 }
 
 .orders-table th {
-  background: #007bff;
+  background: #23272a;
   color: #fff;
   text-align: left;
 }
@@ -330,14 +358,14 @@ body {
 }
 
 .orders-table tbody tr:hover {
-  background: #f8f9fa;
+  background: #23272a;
 }
 
 .orders-table tbody tr:first-child td,
 .orders-table tbody tr:last-child td {
   padding-top: 12px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid #444950;
 }
 
 .orders-table td:nth-child(3),
@@ -351,6 +379,9 @@ body {
   width: 70px;
   padding: 4px 6px;
   margin-left: 4px;
+  background: #181a1b;
+  color: #e0e0e0;
+  border: 1px solid #444950;
 }
 
 .table-actions {
@@ -369,11 +400,11 @@ body {
 
 .profile-list li {
   padding: 6px 0;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid #444950;
 }
 
 .error {
-  color: #dc3545;
+  color: #ff6b6b;
   text-align: center;
   margin-bottom: 10px;
 }
