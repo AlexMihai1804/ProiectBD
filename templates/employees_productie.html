@@ -7,20 +7,13 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
-  <style>
-    /* Override for product-list on productii page */
-    #output.product-list {
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-    }
-  </style>
 </head>
 <body>
   {% include '_navbar.html' %}
   <div class="main-container">
     <div class="header-bar">
-      <h1 style="text-align:center; width:100%;">Rețete disponibile</h1>
+      <h1>Rețete disponibile</h1>
+      <button id="show-form-btn" class="btn btn-secondary">Adaugă rețetă nouă</button>
     </div>
     <div id="recipe-popup" class="popup hidden">
       <div class="popup-content">
@@ -39,8 +32,7 @@
       </div>
     </div>
 
-    <!-- Recipe cards output -->
-    <div id="output" class="product-list" style="display: grid; grid-template-columns: repeat(2, 420px); gap: 1.25rem; justify-content: center;">
+    <div id="output" class="product-list">
       <div class="spinner"></div>
     </div>
   </div>
