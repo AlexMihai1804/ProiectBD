@@ -10,6 +10,7 @@ load_dotenv()
 
 class Database:
     def __init__(self):
+        # Conectare la baza de date
         self.connection = psycopg2.connect(
             dbname=os.getenv("DB_NAME"),
             user=os.getenv("DB_USER"),
@@ -21,12 +22,15 @@ class Database:
         self.cursor = self.connection.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         )
+        # Creare tabele și trigger-e
         self.create_tables()
         self.create_triggers()
+        # Popularea cu date de test
         self.generate_dummy_data()
 
     def create_tables(self):
-        ddl = """
+        #Creeaza tabelele
+        sql = """
         CREATE TABLE IF NOT EXISTS employees (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
@@ -117,7 +121,7 @@ class Database:
             price NUMERIC(10,2) NOT NULL
         );
         """
-        self.cursor.execute(ddl)
+        self.cursor.execute(sql)
         self.cursor.execute(
             "ALTER TABLE recipes ALTER COLUMN quantity SET DEFAULT 1"
         )
@@ -131,6 +135,7 @@ class Database:
         self.connection.commit()
 
     def create_triggers(self):
+        # Creeaza trigger-e pentru actualizarea stocului la inserare, actualizare și ștergere
         sql = """
         CREATE OR REPLACE FUNCTION trg_before_insert_order_content_fn() RETURNS TRIGGER LANGUAGE plpgsql AS $$
         BEGIN
@@ -214,11 +219,13 @@ class Database:
         self.connection.commit()
 
     def _dict_cur(self):
+        # Creeaza un cursor cu suport pentru dict-uri
         return self.connection.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         )
 
     def _fetchone_scalar(self, query, params=(), key=None):
+        # Execută o interogare și returnează un singur scalar sau None
         with self._dict_cur() as cur:
             cur.execute(query, params)
             row = cur.fetchone()
@@ -226,7 +233,8 @@ class Database:
                 return None
             return row[key or list(row.keys())[0]]
 
-    def get_stock(self, final_only: bool = True):
+    def get_stock(self, final_only=True):
+        # returnează toate produsele din stoc
         with self._dict_cur() as cur:
             if final_only:
                 cur.execute("SELECT * FROM stock WHERE type='final'")
@@ -235,6 +243,7 @@ class Database:
             return cur.fetchall()
 
     def get_cheapest_partner_offer(self):
+        # returnează cele mai ieftine oferte de la parteneri pentru fiecare produs
         self.cursor.execute(
             """
             SELECT s.id_product,
@@ -258,33 +267,40 @@ class Database:
         return self.cursor.fetchall()
 
     def get_employees(self):
+        # Listă completă de angajați.
         self.cursor.execute("SELECT * FROM employees")
         return self.cursor.fetchall()
 
     def get_customers(self):
+        # Listă completă de clienți.
         self.cursor.execute("SELECT * FROM customers")
         return self.cursor.fetchall()
 
     def get_orders(self):
+        # Comenzile clienților.
         self.cursor.execute("SELECT * FROM orders")
         return self.cursor.fetchall()
 
     def get_order_content(self):
+        # Articolele din comenzile clienților.
         self.cursor.execute("SELECT * FROM order_content")
         return self.cursor.fetchall()
 
     def get_partners(self):
+        # Listă completă de parteneri.
         self.cursor.execute("SELECT * FROM partners")
         return self.cursor.fetchall()
 
     def get_partner(self, partner_id):
+        # Datele unui partener cu un anumit ID.
         self.cursor.execute(
             "SELECT * FROM partners WHERE id_partner = %s",
             (partner_id,)
         )
         return self.cursor.fetchone()
 
-    def get_partner_products(self, partner_id: int):
+    def get_partner_products(self, partner_id):
+        # Produsele unui partener dat.
         sql = """
         SELECT
           pp.id_stock   AS id_product,
@@ -301,23 +317,28 @@ class Database:
         return rows
 
     def get_partners_products(self):
+        # Toate produsele partenerilor.
         self.cursor.execute("SELECT * FROM partner_products")
         return self.cursor.fetchall()
 
     def get_partner_orders(self):
+        # Comenzile către parteneri.
         self.cursor.execute("SELECT * FROM partner_orders")
         return self.cursor.fetchall()
 
     def get_partner_order_content(self):
+        # Articolele din comenzile către parteneri.
         self.cursor.execute("SELECT * FROM partner_order_content")
         return self.cursor.fetchall()
 
     def get_recipes(self):
+        # Rețetele existente.
         with self._dict_cur() as cur:
             cur.execute("SELECT * FROM recipes")
             return cur.fetchall()
 
     def get_order_quantity(self, order_id):
+        # Cantitatea totală dintr-o comandă.
         q = self._fetchone_scalar(
             "SELECT SUM(quantity) AS qty FROM order_content WHERE id_order = %s",
             (order_id,),
@@ -326,6 +347,7 @@ class Database:
         return q or 0
 
     def get_partner_order_quantity(self, order_id):
+        # Cantitatea totală dintr-o comandă către partener.
         q = self._fetchone_scalar(
             "SELECT SUM(quantity) AS qty FROM partner_order_content WHERE id_order = %s",
             (order_id,),
@@ -334,6 +356,7 @@ class Database:
         return q or 0
 
     def verify_customer(self, username, password):
+        # verficare parolă client
         self.cursor.execute(
             "SELECT 1 FROM customers WHERE LOWER(username)=LOWER(%s) AND password=%s",
             (username, password)
@@ -341,6 +364,7 @@ class Database:
         return self.cursor.fetchone() is not None
 
     def verify_employee(self, username, password):
+        # verificare parolă angajat
         self.cursor.execute(
             "SELECT 1 FROM employees WHERE LOWER(username)=LOWER(%s) AND password=%s",
             (username, password)
@@ -348,6 +372,7 @@ class Database:
         return self.cursor.fetchone() is not None
 
     def verify_partner(self, username, password):
+        # verificare parolă partener
         self.cursor.execute(
             "SELECT 1 FROM partners "
             "WHERE LOWER(username)=LOWER(%s) "
@@ -356,88 +381,8 @@ class Database:
         )
         return self.cursor.fetchone() is not None
 
-    def get_least_busy_employee(self, department):
-        self.cursor.execute(
-            """
-            SELECT e.id
-            FROM employees e
-            LEFT JOIN orders o ON o.id_employee = e.id AND o.progress <> 'completed'
-            LEFT JOIN partner_orders po ON po.id_employee = e.id AND po.status <> 'completed'
-            WHERE e.department = %s
-            GROUP BY e.id
-            ORDER BY COUNT(o.id_order) + COUNT(po.id_order) ASC
-            LIMIT 1
-            """,
-            (department,)
-        )
-        row = self.cursor.fetchone()
-        return row["id"] if row else None
-
-    def place_order(self, customer_id, item_list):
-        if not item_list:
-            return {"error": "Empty item list"}
-        employee_id = self.get_least_busy_employee("sales")
-        if not employee_id:
-            return {"error": "No available employee"}
-        try:
-            with self.connection:
-                now = datetime.utcnow()
-                self.cursor.execute(
-                    "INSERT INTO orders (id_client, data, progress, id_employee) VALUES (%s, %s, %s, %s) RETURNING id_order",
-                    (customer_id, now, "pending", employee_id)
-                )
-                order_id = self.cursor.fetchone()["id_order"]
-                for pid, qty in item_list:
-                    if qty <= 0:
-                        raise ValueError("Invalid quantity")
-                    price = self._fetchone_scalar(
-                        "SELECT price FROM stock WHERE id_product = %s",
-                        (pid,)
-                    )
-                    if price is None:
-                        raise LookupError("Product not found")
-                    self.cursor.execute(
-                        "INSERT INTO order_content (id_order, id_product, quantity, price) VALUES (%s, %s, %s, %s)",
-                        (order_id, pid, qty, price)
-                    )
-            return {"success": True, "order_id": order_id}
-        except Exception as exc:
-            self.connection.rollback()
-            return {"error": str(exc)}
-
-    def place_partner_order(self, partner_id, item_list):
-        if not item_list:
-            return {"error": "Empty item list"}
-        employee_id = self.get_least_busy_employee("sales")
-        if not employee_id:
-            return {"error": "No available employee"}
-        try:
-            with self.connection:
-                now = datetime.utcnow()
-                self.cursor.execute(
-                    "INSERT INTO partner_orders (id_partner, data, status, id_employee) VALUES (%s, %s, %s, %s) RETURNING id_order",
-                    (partner_id, now, "pending", employee_id)
-                )
-                order_id = self.cursor.fetchone()["id_order"]
-                for pid, qty in item_list:
-                    if qty <= 0:
-                        raise ValueError("Invalid quantity")
-                    price = self._fetchone_scalar(
-                        "SELECT price FROM partner_products WHERE id_product = %s",
-                        (pid,)
-                    )
-                    if price is None:
-                        raise LookupError("Product not found")
-                    self.cursor.execute(
-                        "INSERT INTO partner_order_content (id_product, id_order, quantity, price) VALUES (%s, %s, %s, %s)",
-                        (pid, order_id, qty, price)
-                    )
-            return {"success": True, "order_id": order_id}
-        except Exception as exc:
-            self.connection.rollback()
-            return {"error": str(exc)}
-
     def reset_customer_password(self, username, new_password):
+        # Resetare parolă client.
         self.cursor.execute(
             "SELECT 1 FROM customers WHERE username = %s", (username,)
         )
@@ -455,6 +400,7 @@ class Database:
             return {"error": str(exc)}
 
     def reset_employee_password(self, username, new_password):
+        # Resetare parolă angajat.
         self.cursor.execute(
             "SELECT 1 FROM employees WHERE username = %s", (username,)
         )
@@ -468,6 +414,7 @@ class Database:
         return {"success": True}
 
     def search_product_by_name(self, name):
+        # Căutare produs după nume.
         self.cursor.execute(
             "SELECT * FROM stock WHERE LOWER(name) LIKE LOWER(%s)",
             (f"%{name}%",)
@@ -475,6 +422,7 @@ class Database:
         return self.cursor.fetchall()
 
     def get_orders_by_customer(self, customer_id):
+        # Comenzile unui client dat.
         self.cursor.execute(
             "SELECT * FROM orders WHERE id_client = %s ORDER BY data DESC",
             (customer_id,)
@@ -482,6 +430,7 @@ class Database:
         return self.cursor.fetchall()
 
     def get_orders_by_status(self, status):
+        # Comenzile cu un anumit status.
         self.cursor.execute(
             "SELECT * FROM orders WHERE progress = %s ORDER BY data DESC",
             (status,)
@@ -489,6 +438,7 @@ class Database:
         return self.cursor.fetchall()
 
     def get_customer_id(self, username):
+        # id-ul clientului cu un anumit username.
         return self._fetchone_scalar(
             "SELECT id_customer FROM customers WHERE LOWER(username)=LOWER(%s)",
             (username,),
@@ -496,6 +446,7 @@ class Database:
         )
 
     def create_customer(self, name, surname, username, password, email, address='', phone_number=''):
+        # adaugă un client în baza de date.
         try:
             self.cursor.execute(
                 "INSERT INTO customers (name,surname,username,password,email,address,phone_number) "
@@ -509,6 +460,7 @@ class Database:
             return {"error": str(exc)}
 
     def get_customer_by_username(self, username):
+        # datele unui client cu un anumit username.
         self.cursor.execute(
             "SELECT id_customer, name, surname, username, email, address, phone_number "
             "FROM customers WHERE username = %s",
@@ -517,6 +469,7 @@ class Database:
         return self.cursor.fetchone()
 
     def get_customer_by_id(self, cid):
+        # datele unui client cu un anumit id.
         self.cursor.execute(
             "SELECT id_customer, name, surname, email, address, phone_number "
             "FROM customers WHERE id_customer = %s",
@@ -525,6 +478,7 @@ class Database:
         return self.cursor.fetchone()
 
     def get_employee_by_username(self, username):
+        # datele unui angajat cu un anumit username.
         self.cursor.execute(
             "SELECT * FROM employees WHERE username=%s",
             (username,)
@@ -532,6 +486,7 @@ class Database:
         return self.cursor.fetchone()
 
     def generate_dummy_data(self):
+        # adaugă date de test în baza de date.
         try:
             if self._fetchone_scalar("SELECT COUNT(*) FROM employees") == 0:
                 employees = [
@@ -708,7 +663,8 @@ class Database:
             traceback.print_exc(file=sys.stderr)
             self.connection.rollback()
 
-    def get_partner_order(self, order_id: int, employee_id: int | None = None):
+    def get_partner_order(self, order_id, employee_id=None):
+        # Comanda partenerului cu un anumit ID.
         sql = "SELECT * FROM partner_orders WHERE id_order=%s"
         params = [order_id]
         if employee_id is not None:
@@ -717,7 +673,8 @@ class Database:
         self.cursor.execute(sql, tuple(params))
         return self.cursor.fetchone()
 
-    def get_partner_orders_by_partner(self, partner_id: int):
+    def get_partner_orders_by_partner(self, partner_id):
+        # Comenzile partenerului cu un anumit ID.
         self.cursor.execute(
             "SELECT * FROM partner_orders "
             "WHERE id_partner=%s "
@@ -726,7 +683,8 @@ class Database:
         )
         return self.cursor.fetchall()
 
-    def upsert_partner_prices(self, partner_id: int, price_list: list[dict]) -> dict:
+    def upsert_partner_prices(self, partner_id, price_list):
+        # Actualizează prețurile partenerului pentru produsele din listă.
         try:
             with self.connection:
                 for item in price_list:
@@ -750,7 +708,8 @@ class Database:
             self.connection.rollback()
             return {"error": str(exc)}
 
-    def produce_product(self, recipe_id: int, quantity: int) -> dict:
+    def produce_product(self, recipe_id, quantity):
+        # Produce un produs pe baza rețetei.
         if quantity <= 0:
             return {"error": "Invalid quantity"}
         self.cursor.execute("""
@@ -806,14 +765,16 @@ class Database:
             self.connection.rollback()
             return {"error": str(exc)}
 
-    def get_employee_id(self, username: str) -> int | None:
+    def get_employee_id(self, username):
+        # id-ul angajatului cu un anumit username.
         return self._fetchone_scalar(
             "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
             (username,),
             key="id"
         )
 
-    def get_orders_by_employee(self, emp_id: int):
+    def get_orders_by_employee(self, emp_id):
+        # Comenzile unui angajat dat.
         self.cursor.execute(
             "SELECT * FROM orders "
             "WHERE id_employee=%s "
@@ -822,7 +783,8 @@ class Database:
         )
         return self.cursor.fetchall()
 
-    def get_order_items(self, order_id: int):
+    def get_order_items(self, order_id):
+        # Articolele dintr-o comandă dată.
         self.cursor.execute(
             """
             SELECT s.name, oc.quantity, oc.price
@@ -834,7 +796,8 @@ class Database:
         )
         return self.cursor.fetchall()
 
-    def update_order_status(self, emp_username: str, order_id: int, status: str) -> dict:
+    def update_order_status(self, emp_username, order_id, status):
+        # Actualizează statusul unei comenzi.
         emp_id = self.get_employee_id(emp_username)
         if emp_id is None:
             return {"error": "Angajat inexistent"}
@@ -849,7 +812,8 @@ class Database:
         self.connection.commit()
         return {"success": True}
 
-    def add_recipe(self, final_name: str, ingredients: list[dict]) -> dict:
+    def add_recipe(self, final_name, ingredients):
+        # Adaugă o rețetă în baza de date.
         id_final = self._fetchone_scalar(
             "SELECT id_product FROM stock "
             "WHERE LOWER(name)=LOWER(%s) AND type='final'",
@@ -897,7 +861,8 @@ class Database:
             self.connection.rollback()
             return {"error": str(exc)}
 
-    def create_procurement_orders(self, employee_id: int,items: list[list[int]]) -> dict:
+    def create_procurement_orders(self, employee_id, items):
+        # Comenzile de achiziție pentru parteneri.
         if not items:
             return {"error": "Empty item list"}
         if employee_id is None:
@@ -941,7 +906,6 @@ class Database:
                         """,
                         (partner_id, now, employee_id))
                     oid = self.cursor.fetchone()["id_order"]
-
                     self.cursor.executemany(
                         """
                         INSERT INTO partner_order_content
@@ -956,7 +920,8 @@ class Database:
             self.connection.rollback()
             return {"error": str(exc)}
 
-    def get_partner_order_items(self, order_id: int):
+    def get_partner_order_items(self, order_id):
+        # Articolele dintr-o comandă către partener.
         self.cursor.execute(
             """
             SELECT s.name, poc.quantity, poc.price
@@ -968,7 +933,8 @@ class Database:
             (order_id,))
         return self.cursor.fetchall()
 
-    def update_partner_order_status(self, partner_id: int,order_id: int,status: str) -> dict:
+    def update_partner_order_status(self, partner_id, order_id, status):
+        # Actualizează statusul unei comenzi către partener.
         self.cursor.execute(
             """
             UPDATE partner_orders
