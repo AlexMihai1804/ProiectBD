@@ -437,17 +437,13 @@ class Database:
 
     def create_customer(self, name, surname, username, password, email, address='', phone_number=''):
         # adaugă un client în baza de date.
-        try:
-            self.cursor.execute(
-                "INSERT INTO customers (name,surname,username,password,email,address,phone_number) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (name, surname, username, password, email, address, phone_number)
-            )
-            self.connection.commit()
-            return {"success": True}
-        except Exception as exc:
-            self.connection.rollback()
-            return {"error": str(exc)}
+        self.cursor.execute(
+            "INSERT INTO customers (name,surname,username,password,email,address,phone_number) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (name, surname, username, password, email, address, phone_number)
+        )
+        self.connection.commit()
+        return {"success": True}
 
     def get_customer_by_username(self, username):
         # datele unui client cu un anumit username.
@@ -675,35 +671,31 @@ class Database:
 
     def upsert_partner_prices(self, partner_id, price_list):
         # Actualizează prețurile partenerului pentru produsele din listă.
-        try:
-            with self.connection:
-                for item in price_list:
-                    pid   = item["id_product"]
-                    price = item["price"]
-                    if price <= 0:
-                        self.cursor.execute(
-                            "DELETE FROM partner_products "
-                            "WHERE id_stock=%s AND id_partner=%s",
-                            (pid, partner_id)
-                        )
-                        continue
+        with self.connection:
+            for item in price_list:
+                pid   = item["id_product"]
+                price = item["price"]
+                if price <= 0:
                     self.cursor.execute(
-                        "UPDATE partner_products "
-                        "SET price=%s "
+                        "DELETE FROM partner_products "
                         "WHERE id_stock=%s AND id_partner=%s",
-                        (price, pid, partner_id)
+                        (pid, partner_id)
                     )
-                    if self.cursor.rowcount == 0:
-                        self.cursor.execute(
-                            "INSERT INTO partner_products "
-                            "  (id_stock, price, quantity, id_partner) "
-                            "VALUES (%s,%s,0,%s)",
-                            (pid, price, partner_id)
-                        )
-            return {"success": True}
-        except Exception as exc:
-            self.connection.rollback()
-            return {"error": str(exc)}
+                    continue
+                self.cursor.execute(
+                    "UPDATE partner_products "
+                    "SET price=%s "
+                    "WHERE id_stock=%s AND id_partner=%s",
+                    (price, pid, partner_id)
+                )
+                if self.cursor.rowcount == 0:
+                    self.cursor.execute(
+                        "INSERT INTO partner_products "
+                        "  (id_stock, price, quantity, id_partner) "
+                        "VALUES (%s,%s,0,%s)",
+                        (pid, price, partner_id)
+                    )
+        return {"success": True}
 
     def produce_product(self, recipe_id, quantity):
         # Produce un produs pe baza rețetei.
@@ -945,3 +937,67 @@ class Database:
             return {"error": "Comandă inexistentă sau nu vă aparține"}
         self.connection.commit()
         return {"success": True}
+
+    def place_order(self, customer_id, items):
+        """
+        Creează o comandă nouă pentru clientul dat.
+        items: list[tuple[id_product:int, quantity:int]]
+        Returnează {'success': True, 'order_id': X} sau {'error': msg}.
+        """
+        if not customer_id:
+            return {"error": "Client invalid"}
+        if not items:
+            return {"error": "Lista de produse este goală"}
+
+        # Validare elemente
+        try:
+            clean_items = [
+                (int(pid), int(qty))
+                for pid, qty in items
+                if int(qty) > 0
+            ]
+        except Exception:
+            return {"error": "Date produse invalide"}
+
+        if not clean_items:
+            return {"error": "Cantități invalide"}
+
+        # Angajat vânzări care va prelua comanda
+        emp_id = self._fetchone_scalar(
+            "SELECT id FROM employees WHERE department='sales' ORDER BY id LIMIT 1",
+            (), key="id"
+        )
+        if emp_id is None:
+            return {"error": "Nu există angajați vânzări"}
+
+        try:
+            from datetime import datetime
+            now = datetime.utcnow()
+            with self.connection:
+                # Inserare comandă
+                self.cursor.execute(
+                    "INSERT INTO orders (id_client,data,progress,id_employee) "
+                    "VALUES (%s,%s,'pending',%s) RETURNING id_order",
+                    (customer_id, now, emp_id)
+                )
+                oid = self.cursor.fetchone()["id_order"]
+
+                # Inserare articole
+                for pid, qty in clean_items:
+                    price = self._fetchone_scalar(
+                        "SELECT price FROM stock WHERE id_product=%s",
+                        (pid,), key="price"
+                    )
+                    if price is None:
+                        raise ValueError(f"Produs inexistent ID {pid}")
+                    self.cursor.execute(
+                        "INSERT INTO order_content "
+                        "(id_order,id_product,quantity,price) "
+                        "VALUES (%s,%s,%s,%s)",
+                        (oid, pid, qty, price)
+                    )
+            self.connection.commit()
+            return {"success": True, "order_id": oid}
+        except Exception as exc:
+            self.connection.rollback()
+            return {"error": str(exc)}
