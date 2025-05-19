@@ -700,12 +700,13 @@ class Database:
         )
         return self.cursor.fetchall()
 
-    def upsert_partner_prices(self, partner_id, price_list):
-        # Actualizează prețurile partenerului pentru produsele din listă.
+    def update_partner_prices(self, partner_id: int, price_list: list[dict]):
+        # Actualizează prețurile partenerului pentru produsele date.
         with self.connection:
             for item in price_list:
                 pid   = item["id_product"]
                 price = item["price"]
+                # preț <= 0 sterge produsul
                 if price <= 0:
                     self.cursor.execute(
                         "DELETE FROM partner_products "
@@ -719,6 +720,7 @@ class Database:
                     "WHERE id_stock=%s AND id_partner=%s",
                     (price, pid, partner_id)
                 )
+                # dacă nu exista rând, facem inserare
                 if self.cursor.rowcount == 0:
                     self.cursor.execute(
                         "INSERT INTO partner_products "

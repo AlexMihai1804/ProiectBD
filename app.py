@@ -294,7 +294,7 @@ def api_set_partner_products(partner_id):
     if not partner or session.get('partner', '').lower() != partner['username'].lower():
         return jsonify({'error': 'Not authorized'}), 403
     prices = (request.get_json() or {}).get('prices', [])
-    res = database.upsert_partner_prices(partner_id, prices)
+    res = database.update_partner_prices(partner_id, prices)
     return (jsonify(res), 200 if res.get('success') else 400)
 
 
