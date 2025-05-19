@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Departament Producție</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <!-- PyScript -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
   <style>
@@ -19,14 +18,10 @@
 </head>
 <body>
   {% include '_navbar.html' %}
-
   <div class="main-container">
     <div class="header-bar">
       <h1 style="text-align:center; width:100%;">Rețete disponibile</h1>
     </div>
-    {% set show_add_recipe = true %}
-
-    <!-- New-recipe POPUP -->
     <div id="recipe-popup" class="popup hidden">
       <div class="popup-content">
         <h3>Formular rețetă nouă</h3>
@@ -50,7 +45,6 @@
     </div>
   </div>
 
-  <!-- PyScript: fetch & render recipes -->
   <py-script>
 import asyncio, json, js
 from pyodide.http import pyfetch
@@ -58,13 +52,15 @@ from js import document, console, alert
 from pyodide.ffi import create_proxy
 
 async def load_recipes():
-    """
-    Fetch recipes from the backend and render recipe cards.
-    """
     out = document.getElementById('output')
     out.innerHTML = '<div class="spinner"></div>'
     try:
-        resp = await pyfetch('/api/employee/productie/recipes')
+        from js import Date
+        url = f"/api/employee/productie/recipes?_={int(Date.now())}"
+        resp = await pyfetch(
+            url,
+            credentials="same-origin"
+        )
         console.log('Fetch status', resp.status)
         if not resp.ok:
             out.innerText = f'Error: {resp.status}'
@@ -95,7 +91,6 @@ async def load_recipes():
             ul.appendChild(li)
         card.appendChild(ul)
 
-        # quantity input + produce button
         actions = document.createElement('div')
         actions.className = 'recipe-actions'
 
@@ -108,7 +103,7 @@ async def load_recipes():
         btn = document.createElement('button')
         btn.innerText = 'Produce'
         btn.className = 'btn btn-primary btn-sm'
-        btn.type = 'button'             # NEW – avoid default submit
+        btn.type = 'button'
 
         async def produce(evt, rid=r['id_final'], qty_input=inp):
             try:
@@ -119,24 +114,25 @@ async def load_recipes():
             except Exception:
                 alert('Număr invalid')
                 return
-            res = await pyfetch(
+
+            resp = await pyfetch(
                 '/api/employee/productie/produce',
                 method='POST',
                 headers={'Content-Type': 'application/json'},
                 body=json.dumps({'recipe_id': rid, 'quantity': q}),
-                credentials='same-origin'   # NEW – send session cookie
+                credentials='same-origin'
             )
-            if res.ok:
-                alert('Done')
+
+            data = await resp.json() 
+            if resp.ok and data.get('success'):
+                alert('Produs adăugat în stoc')
                 await load_recipes()
             else:
-                t = await res.text()
-                alert('Error:' + t)
+                alert('Eroare: ' + (data.get('error') or f'HTTP {resp.status}'))
 
-        from pyodide.ffi import create_proxy   # already imported at top
         btn.addEventListener(
             "click",
-            create_proxy(lambda e: asyncio.ensure_future(produce(e)))
+            create_proxy(produce)
         )
 
         actions.appendChild(btn)
@@ -145,15 +141,11 @@ async def load_recipes():
         out.appendChild(card)
 
 async def submit_new(evt):
-    """
-    Handle POSTing a new recipe to the backend.
-    """
     evt.preventDefault()
     final = document.getElementById('final-name').value.strip()
     if not final:
         alert('Nume invalid')
         return
-
     ingredients = []
     for row in document.querySelectorAll('.ingredient-row'):
         nm = row.querySelector('.ingredient-name').value.strip()
@@ -176,7 +168,6 @@ async def submit_new(evt):
             alert('Salvat')
             document.getElementById('recipe-form').reset()
             document.getElementById('recipe-popup').classList.add('hidden')
-            # remove dynamically added ingredient rows (keep the first)
             rows = document.querySelectorAll('.ingredient-row')
             for i in range(rows.length - 1, 0, -1):
                 rows.item(i).remove()
@@ -188,11 +179,9 @@ async def submit_new(evt):
         console.error('Submit error', e)
         alert('Network error')
 
-# ----------  STOCK / POP-UP LOGIC  ----------
 products = []
 
 async def load_stock():
-    """Fetch full stock list from backend."""
     global products
     try:
         resp = await pyfetch("/api/stock?final_only=0")
@@ -203,13 +192,6 @@ async def load_stock():
         console.error("Stock fetch error", exc)
 
 def optionize(select, needed_type: str):
-    """
-    Populate the given <select> element with options of the requested type.
-
-    :param select:   A reference to a DOM <select> element
-    :param needed_type: 'final' to list only final products,
-                        'raw'   to list only materiile prime
-    """
     select.innerHTML = ""
     for p in products:
         if (needed_type == "final" and p["type"] == "final") or \
@@ -220,9 +202,6 @@ def optionize(select, needed_type: str):
             select.appendChild(opt)
 
 def new_ingredient_row(evt=None):
-    """
-    Append a new ingredient row to the recipe form.
-    """
     row = document.createElement("div")
     row.className = "ingredient-row"
     row.style.marginBottom = ".5em"
@@ -254,7 +233,6 @@ def show_popup(evt=None):
 def hide_popup(evt=None):
     document.getElementById("recipe-popup").classList.add("hidden")
 
-# ---------------- event bindings ------------------
 show_btn  = document.getElementById("show-form-btn")
 close_btn = document.getElementById("close-popup")
 add_ing   = document.getElementById("add-ingredient-btn")
@@ -270,7 +248,6 @@ js.window.addEventListener(
 
 recipe_frm.addEventListener("submit", create_proxy(submit_new))
 
-# ---------- kick‑off ----------
 asyncio.ensure_future(load_stock())
 asyncio.ensure_future(load_recipes())
   </py-script>

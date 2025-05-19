@@ -1,50 +1,50 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-  <meta charset="UTF-8">
-  <title>Angajați</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <title>Angajați</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  {% include '_navbar.html' %}
-  <div class="main-container">
+{% include '_navbar.html' %}
+<div class="main-container">
     <h2>Angajați pe departamente</h2>
     <section>
-      <h3>Lucrători Achiziții</h3>
-      {% if achizitii %}
-      <ul>
-        {% for e in achizitii %}
-        <li>{{ e.name }} {{ e.surname }}</li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p>Nu există lucrători în acest departament.</p>
-      {% endif %}
+        <h3>Lucrători Achiziții</h3>
+        {% if achizitii %}
+            <ul>
+                {% for e in achizitii %}
+                    <li>{{ e.name }} {{ e.surname }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Nu există lucrători în acest departament.</p>
+        {% endif %}
     </section>
     <section>
-      <h3>Lucrători Vânzări</h3>
-      {% if vanzari %}
-      <ul>
-        {% for e in vanzari %}
-        <li>{{ e.name }} {{ e.surname }}</li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p>Nu există lucrători în acest departament.</p>
-      {% endif %}
+        <h3>Lucrători Vânzări</h3>
+        {% if vanzari %}
+            <ul>
+                {% for e in vanzari %}
+                    <li>{{ e.name }} {{ e.surname }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Nu există lucrători în acest departament.</p>
+        {% endif %}
     </section>
     <section>
-      <h3>Lucrători Producție</h3>
-      {% if productie %}
-      <ul>
-        {% for e in productie %}
-        <li>{{ e.name }} {{ e.surname }}</li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <p>Nu există lucrători în acest departament.</p>
-      {% endif %}
+        <h3>Lucrători Producție</h3>
+        {% if productie %}
+            <ul>
+                {% for e in productie %}
+                    <li>{{ e.name }} {{ e.surname }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Nu există lucrători în acest departament.</p>
+        {% endif %}
     </section>
-  </div>
+</div>
 </body>
 </html>

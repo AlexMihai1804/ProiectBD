@@ -27,14 +27,12 @@ tb = document.querySelector("#tbl tbody")
 
 def make_row(o):
     tr = document.createElement("tr")
-    # ID with link
     td_id = document.createElement("td")
     a = document.createElement("a")
     a.href = f"/employees/achizitii/order/{o['id_order']}"
     a.textContent = str(o['id_order'])
     td_id.appendChild(a)
     tr.appendChild(td_id)
-    # partner
     for key in ('partner', 'date_fmt', 'status'):
         td = document.createElement("td")
         td.textContent = o[key]

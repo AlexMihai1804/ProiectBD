@@ -35,22 +35,18 @@ STATUSES = ['pending','processing','completed','cancelled']
 def build_row(o):
     tr = document.createElement("tr")
 
-    # ID
     td_id = document.createElement("td")
     td_id.textContent = o["id_order"]
     tr.appendChild(td_id)
 
-    # Date
     td_dt = document.createElement("td")
     td_dt.textContent = o["date_fmt"]
     tr.appendChild(td_dt)
 
-    # Status curent
     td_status = document.createElement("td")
     td_status.textContent = o["status"]
     tr.appendChild(td_status)
 
-    # Select + buton
     td_act = document.createElement("td")
     sel = document.createElement("select")
     for s in STATUSES:

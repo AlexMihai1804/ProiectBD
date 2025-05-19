@@ -25,7 +25,6 @@ import asyncio
 from pyodide.http import pyfetch
 from js import document, console
 
-# Jinja injects this integer
 partner_id = {{ partner_id }}
 
 async def load_partner_products():
@@ -45,17 +44,14 @@ async def load_partner_products():
             card = document.createElement("div")
             card.className = "product-card"
 
-            # 1) Product name as a heading
             h2 = document.createElement("h2")
             h2.innerText = prod["name"]
             card.appendChild(h2)
 
-            # 2) Price on its own line
             p_price = document.createElement("p")
             p_price.innerText = f"Pret: {prod['price']} RON"
             card.appendChild(p_price)
 
-            # 3) Quantity on its own line
             p_qty = document.createElement("p")
             p_qty.innerText = f"Cantitate: {prod.get('quantity','?')}"
             card.appendChild(p_qty)
@@ -65,7 +61,6 @@ async def load_partner_products():
         console.error("Fetch error:", e)
         out.innerText = f"Eroare rețea: {e}"
 
-# kick it off
 asyncio.ensure_future(load_partner_products())
 </py-script>
 

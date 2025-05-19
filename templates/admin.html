@@ -148,26 +148,91 @@
 
   <button type="submit">Salvează Rețetă</button>
 </form>
-
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const select = document.getElementById('entity-select');
-      const forms  = document.querySelectorAll('.entity-form');
-
-      select.addEventListener('change', () => {
-        // ascunde toate
-        forms.forEach(f => f.style.display = 'none');
-
-        // arată doar formularul selectat
-        const sel = select.value;
-        if (sel) {
-          const toShow = document.getElementById(`${sel}-form`);
-          if (toShow) toShow.style.display = 'block';
+    
+        .entity-form label {
+            display: block;
+            margin: 6px 0;
         }
-      });
+
+        .entity-form input, .entity-form textarea, .entity-form select {
+            width: 100%;
+            max-width: 420px;
+            padding: 6px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+
+        .entity-form textarea {
+            resize: vertical;
+        }
+
+        .entity-form h2 {
+            margin: 0 0 .6em;
+        }
+    </style>
+</head>
+<body>
+{% include '_navbar.html' %}
+<div class="main-container">
+    <h1>Panou Admin</h1>
+    <label for="entity-select"><strong>Alege ce vrei să adaugi:</strong></label>
+    <select id="entity-select">
+        <option value="">-- Selectează entitate --</option>
+        <option value="product">Produs</option>
+        <option value="employee">Angajat</option>
+        <option value="partner">Partener</option>
+    </select>
+    <div id="form-container">
+        <form id="product-form" class="entity-form" action="/api/products" method="post">
+            <h2>Produs Nou</h2>
+            <label>Nume <input name="name" required></label>
+            <label>Preț <input name="price" type="number" step="0.01" required></label>
+            <label>Descriere <textarea name="description"></textarea></label>
+            <label>Stoc <input name="quantity" type="number" min="0" required></label>
+            <label>Tip <input name="type" value="final"></label>
+            <button type="submit" class="btn btn-primary">Salvează Produs</button>
+        </form>
+        <form id="employee-form" class="entity-form" action="/api/employees" method="post">
+            <h2>Angajat Nou</h2>
+            <label>Nume <input name="name" required></label>
+            <label>Prenume <input name="surname" required></label>
+            <label>Departament
+                <select name="department">
+                    <option value="vanzari">Vânzări</option>
+                    <option value="productie">Producție</option>
+                    <option value="achizitii">Achiziții</option>
+                </select>
+            </label>
+            <label>Salariu <input name="salary" type="number" step="0.01" required></label>
+            <label>Email <input name="email" type="email" required></label>
+            <label>Telefon <input name="phone_number" type="tel"></label>
+            <label>Adresă <input name="address"></label>
+            <label>Username <input name="username" required></label>
+            <label>Parolă <input name="password" type="password" required></label>
+            <button type="submit" class="btn btn-primary">Salvează Angajat</button>
+        </form>
+        <form id="partner-form" class="entity-form" action="/api/partners" method="post">
+            <h2>Partener Nou</h2>
+            <label>Nume <input name="name" required></label>
+            <label>Email <input name="email" type="email" required></label>
+            <label>Telefon <input name="phone_number" type="tel"></label>
+            <label>Adresă <input name="address"></label>
+            <label>Username <input name="username" required></label>
+            <label>Parolă <input name="password" type="password" required></label>
+            <button type="submit" class="btn btn-primary">Salvează Partener</button>
+        </form>
+    </div>
+</div>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const select = document.getElementById('entity-select');
+        const forms = document.querySelectorAll('.entity-form');
+        select.addEventListener('change', () => {
+            forms.forEach(f => f.style.display = 'none');
+            const chosen = document.getElementById(`${select.value}-form`);
+            if (chosen) chosen.style.display = 'block';
+        });
     });
-  </script>
+</script>
 </body>
 </html>
-
