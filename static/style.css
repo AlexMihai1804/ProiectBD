@@ -216,10 +216,42 @@ label { font-weight: 500; margin-bottom: .25rem; display: inline-block; }
   padding: 1.25rem 1.5rem;
 }
 
-/********************
-  8. TABLES
-********************/
-.table-wrapper { overflow-x: auto; }
+/* loading spinner */
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 6px solid #f3f3f3;
+  border-top: 6px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 40px auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Production / recipe cards ---------- */
+.recipe-card ul {
+  margin: 8px 0 0 16px;   /* indent nicely under title */
+  padding: 0;
+}
+.recipe-card ul li {
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+}
+.recipe-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --------------------------------------------------
+   TABLES (orders, sales etc.)
+-------------------------------------------------- */
 .orders-table {
   width: 100%;
   border-collapse: collapse;

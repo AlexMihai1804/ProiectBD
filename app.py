@@ -136,7 +136,7 @@ def employees_productie():
     return render_template('employees_productie.html')
 
 # --------------------------------------------------
-#  AUTH ROUTES (CUSTOMER & EMPLOYEE)
+#  AUTH ROUTES (CUSTOMER & EMPLOYEE & PARTNER)
 # --------------------------------------------------
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -193,6 +193,19 @@ def employee_login():
         error = 'Date invalide'
     return render_template('employee_login.html', error=error)
 
+@app.route('/partner_login', methods=['GET', 'POST'])
+def partner_login():
+    error = None
+    if request.method == 'POST':
+        uname = request.form['username'].strip().lower()
+        pwd   = request.form['password']
+        if database.verify_partner(uname, pwd):
+            session.clear()
+            session['partner'] = uname          # mark partner session
+            return redirect(url_for('partners_page'))
+        error = 'Date invalide'
+    return render_template('partner_login.html', error=error)
+
 @app.route('/logout')
 def logout():
     session.clear()
@@ -206,6 +219,14 @@ def logout():
 def api_products():
     prods = database.get_stock()          # final-only by default
     return (jsonify(prods), 200) if prods else (jsonify({'error': 'No products'}), 404)
+
+# --- PUBLIC STOCK API (both raw + final) -------------------------------
+@app.route('/api/stock')
+def api_stock():
+    """Return all products; ?final_only=0 keeps raws too (default 1)."""
+    final_only = request.args.get('final_only', '1') != '0'
+    rows = database.get_stock(final_only=final_only)
+    return (jsonify(rows), 200) if rows else (jsonify({'error': 'No products'}), 404)
 
 # ------------ ACHIZITII API ---------------------------------
 @app.route('/api/achizitii/stock')
@@ -251,7 +272,21 @@ def api_place_order():
 
 @app.route('/partners')
 def partners_page():
-    return render_template('partners.html')
+    # -- trebuie să fii logat ca partener --
+    if 'partner' not in session:
+        return redirect(url_for('partner_login'))
+
+    # extrage id-ul partenerului curent
+    partner_id = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],),               # username salvat în sesiune
+        key='id_partner'
+    )
+    if not partner_id:
+        return "Partener inexistent", 404
+
+    # trimite id-ul în template
+    return render_template('partners.html', partner_id=partner_id)
 
 # API endpoint to list partners
 @app.route('/api/partners')
@@ -280,6 +315,45 @@ def api_partner_products(partner_id):
     if prods is None:
         return jsonify({'error': 'Partner not found'}), 404
     return jsonify(prods)
+
+# NEW: accept POST to update/insert partner_products prices
+@app.route('/api/partners/<int:partner_id>/products', methods=['POST'])
+def api_set_partner_products(partner_id):
+    # only the logged-in partner may update their prices
+    partner = database.get_partner(partner_id)
+    # compare usernames case-insensitively
+    if not partner or session.get('partner', '').lower() != partner['username'].lower():
+         return jsonify({'error': 'Not authorized'}), 403
+
+    data   = request.get_json() or {}
+    prices = data.get('prices', [])
+
+    for item in prices:
+        pid   = item.get('id_product')   # ← acesta este id_stock
+        price = item.get('price')
+
+        # există deja rând pt (id_stock, id_partner) ?
+        database.cursor.execute(
+            "SELECT id_product FROM partner_products "
+            "WHERE id_stock=%s AND id_partner=%s",
+            (pid, partner_id)
+        )
+        if database.cursor.fetchone():
+            database.cursor.execute(
+                "UPDATE partner_products "
+                "SET price=%s "
+                "WHERE id_stock=%s AND id_partner=%s",
+                (price, pid, partner_id)
+            )
+        else:
+            database.cursor.execute(
+                "INSERT INTO partner_products (id_stock, price, quantity, id_partner) "
+                "VALUES (%s, %s, %s, %s)",
+                (pid, price, 0, partner_id)
+            )
+
+    database.connection.commit()
+    return jsonify({'success': True})
 
 # --------------------------------------------------
 #  EMPLOYEE (SALES) APIs
@@ -312,26 +386,34 @@ def get_recipes():
         return jsonify({'error': 'Not authorized'}), 403
 
     recipes = database.get_recipes()
+
+    # -------- NEW: one single query instead of dozens -----------------
+    stock_rows = database.get_stock(final_only=False)
+    stock_map  = {row['id_product']: row for row in stock_rows}
+    # ------------------------------------------------------------------
+
     result = []
-    for recipe in recipes:                      # RealDictRow → dict
+    for rec in recipes:
         ingredients = []
         for i in range(1, 6):
-            material_id = recipe.get(f'id_material{i}')
-            quantity    = recipe.get(f'quantity_material{i}')
-            if material_id and quantity:
-                material_name = database._fetchone_scalar(
-                    "SELECT name FROM stock WHERE id_product = %s",
-                    (material_id,)
-                )
-                ingredients.append({"name": material_name, "quantity": quantity})
+            mid = rec.get(f'id_material{i}')
+            qty = rec.get(f'quantity_material{i}')
+            if mid and qty:
+                srow = stock_map.get(mid, {})
+                ingredients.append({
+                    'name':     srow.get('name', f'ID {mid}'),
+                    'quantity': qty,
+                    'stock':    srow.get('quantity', 0)
+                })
+
+        final = stock_map.get(rec['id_final'], {})
         result.append({
-            "id_final": recipe["id_final"],
-            "final_name": database._fetchone_scalar(
-                "SELECT name FROM stock WHERE id_product = %s",
-                (recipe["id_final"],)
-            ),
-            "ingredients": ingredients
+            'id_final':    rec['id_final'],
+            'final_name':  final.get('name', f'ID {rec["id_final"]}'),
+            'final_stock': final.get('quantity', 0),
+            'ingredients': ingredients
         })
+
     return jsonify(result)
 
 @app.route('/api/employee/productie/recipes', methods=['POST'])
@@ -575,6 +657,45 @@ def api_create_recipe():
     except Exception as e:
         database.connection.rollback()
         return jsonify({'error': str(e)}), 500
+
+# ---------- PARTNER ORDERS UI -----------------------
+@app.route('/partners/orders')
+def partner_orders_page():
+    if 'partner' not in session:
+        return redirect(url_for('partner_login'))
+    partner_id = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    if not partner_id:
+        return "Partener inexistent", 404
+    return render_template('partner_orders.html', partner_id=partner_id)
+
+# ---------- PARTNER ORDERS APIs ---------------------
+@app.route('/api/partner/my_orders')
+def api_partner_my_orders():
+    if 'partner' not in session:
+        return jsonify({'error': 'Not authorized'}), 403
+    pid = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    data = database.get_partner_orders_by_partner(pid)
+    for r in data:
+        r['date_fmt'] = r['data'].strftime('%Y-%m-%d %H:%M')
+    return jsonify(data)
+
+@app.route('/api/partner/update_order', methods=['POST'])
+def api_partner_update_order():
+    if 'partner' not in session:
+        return jsonify({'error': 'Not authorized'}), 403
+    payload = request.get_json() or {}
+    pid   = database._fetchone_scalar(
+        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+        (session['partner'],), key='id_partner')
+    res = database.update_partner_order_status(
+        pid,
+        payload.get('order_id'),
+        payload.get('status'))
+    return (jsonify(res), 200 if res.get('success') else 400)
 
 # --------------------------------------------------
 if __name__ == '__main__':

@@ -1,14 +1,17 @@
 <nav class="navbar">
   <div class="nav-left">
-    {# ---------- Home & Partners (role-aware) ---------- #}
+    {# ---------- Home links ---------- #}
     {% if session.employee %}
       <a href="{{ url_for('employees') }}">Acasă</a>
       <a href="{{ url_for('partners_page') }}">Parteneri</a>
+    {% elif session.partner %}
+      <a href="{{ url_for('partners_page') }}">Acasă</a>
+      <a href="{{ url_for('partner_orders_page') }}">Comenzi</a>
     {% else %}
       <a href="{{ url_for('products_page') }}">Acasă</a>
     {% endif %}
 
-    {# employee quick-login always visible when NOT logged as employee #}
+    {# quick-login buttons (shown when NOT logged as that role) #}
     {% if not session.employee %}
       <button class="btn btn-secondary"
               onclick="window.location='{{ url_for('employee_login') }}'">
@@ -23,6 +26,12 @@
 
   <div class="nav-center" style="flex:1; display:flex; justify-content:center; align-items:center;">
     <img src="https://i.redd.it/logo-design-for-soft-drinks-company-v0-vyl7tjyvatmb1.jpg?width=4000&format=pjpg&auto=webp&s=b070a0e85f6a1cc606bf1351c61341855d6aa436" alt="Logo" style="height:50px; width = 70px; margin-left: 60px; margin-right: 1rem;" />
+    {% if not session.partner %}
+      <button class="btn btn-secondary"
+              onclick="window.location='{{ url_for('partner_login') }}'">
+        Partener
+      </button>
+    {% endif %}
   </div>
 
   <div class="nav-right">
@@ -30,6 +39,11 @@
       <button class="btn btn-secondary"
               onclick="window.location='{{ url_for('logout') }}'">
         Logout angajat
+      </button>
+    {% elif session.partner %}
+      <button class="btn btn-secondary"
+              onclick="window.location='{{ url_for('logout') }}'">
+        Logout partener
       </button>
     {% elif session.user %}
       <div class="dropdown">
@@ -76,6 +90,8 @@
 
 {% if session.employee %}
   <div class="welcome-banner">Bine ai venit, {{ session.employee }}!</div>
+{% elif session.partner %}
+  <div class="welcome-banner">Bine ai venit, {{ session.partner }}!</div>
 {% elif session.user %}
   <div class="welcome-banner">Bine ai venit, {{ session.user }}!</div>
 {% endif %}

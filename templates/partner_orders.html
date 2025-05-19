@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Comenzile mele</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
+</head>
+<body>
+  {% include '_navbar.html' %}
+  <div class="main-container">
+    <h2>Comenzile tale către magazin</h2>
+    <table id="tbl" class="orders-table">
+      <thead><tr><th>ID</th><th>Data</th><th>Status</th><th>Acțiune</th></tr></thead>
+      <tbody><tr><td colspan="4" style="text-align:center">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
+{% raw %}
+<py-script>
+import asyncio, json
+from js import document, window
+from pyodide.http import pyfetch
+from pyodide.ffi import create_proxy
+
+tbody = document.querySelector("#tbl tbody")
+STATUSES = ['pending','processing','completed','cancelled']
+
+def build_row(o):
+    tr = document.createElement("tr")
+
+    # ID
+    td_id = document.createElement("td")
+    td_id.textContent = o["id_order"]
+    tr.appendChild(td_id)
+
+    # Date
+    td_dt = document.createElement("td")
+    td_dt.textContent = o["date_fmt"]
+    tr.appendChild(td_dt)
+
+    # Status curent
+    td_status = document.createElement("td")
+    td_status.textContent = o["status"]
+    tr.appendChild(td_status)
+
+    # Select + buton
+    td_act = document.createElement("td")
+    sel = document.createElement("select")
+    for s in STATUSES:
+        opt = document.createElement("option")
+        opt.value = s
+        opt.textContent = s
+        if s == o["status"]:
+            opt.selected = True
+        sel.appendChild(opt)
+    btn = document.createElement("button")
+    btn.textContent = "Salvează"
+    btn.className = "btn btn-primary btn-sm"
+    btn.style.marginLeft = "8px"
+
+    async def update(evt=None, oid=o["id_order"], select=sel):
+        resp = await pyfetch(
+            "/api/partner/update_order",
+            method="POST",
+            headers={"Content-Type":"application/json"},
+            body=json.dumps({"order_id": oid, "status": select.value}),
+            credentials="same-origin"
+        )
+        rez = await resp.json()
+        window.alert("Actualizat!" if rez.get("success") else rez.get("error","Eroare"))
+        await load()
+
+    from pyodide.ffi import create_proxy
+    btn.addEventListener("click", create_proxy(update))
+
+    td_act.appendChild(sel); td_act.appendChild(btn)
+    tr.appendChild(td_act)
+    return tr
+
+async def load():
+    tbody.innerHTML = "<tr><td colspan='4' style='text-align:center'>Loading…</td></tr>"
+    resp = await pyfetch("/api/partner/my_orders")
+    data = await resp.json()
+    tbody.innerHTML = ""
+    if not isinstance(data, list):
+        tbody.innerHTML = f"<tr><td colspan='4'>{data.get('error','Eroare')}</td></tr>"
+        return
+    for o in data:
+        tbody.appendChild(build_row(o))
+
+asyncio.ensure_future(load())
+</py-script>
+{% endraw %}
+</body>
+</html>

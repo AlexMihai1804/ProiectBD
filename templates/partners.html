@@ -3,73 +3,124 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Parteneri</title>
-
+  <title>Materii Prime – Setează Preț</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
 </head>
 <body>
   {% include '_navbar.html' %}
-
   <div class="main-container">
     <div class="header-bar">
-      <h2 style="text-align: center; width: 100%; margin-top: 20px; margin-bottom: 40px">Parteneri</h2>
+      <h2 style="text-align: center; width: 100%; margin-top: 20px; margin-bottom: 40px">Materii Prime</h2>
     </div>
-    <div id="output" class="product-list">
+    <div id="materials-list" class="product-list">
       <div class="spinner"></div>
     </div>
+    <button id="save-prices" class="btn btn-primary">Salvează prețuri</button>
   </div>
+
+  <!-- inject partner_id into JS -->
+  <script>
+    window.partner_id = {{ partner_id }};
+  </script>
 
   {% raw %}
   <py-script>
-import asyncio
+import asyncio, json
+from js import document, window
 from pyodide.http import pyfetch
-from js import document, console
+from pyodide.ffi import create_proxy
 
-async def load_partners():
-    out = document.getElementById("output")
+async def load_materials():
+    out = document.getElementById("materials-list")
+    out.innerHTML = '<div class="spinner"></div>'
     try:
-        resp = await pyfetch("/api/partners")
+        resp = await pyfetch("/api/stock?final_only=0")
         if not resp.ok:
-            out.innerText = (
-                "Nu sunt parteneri." if resp.status == 404
-                else f"Eroare server ({resp.status})"
-            )
+            out.innerText = "Eroare server la încărcare stock"
             return
-        partners = await resp.json()
+        data = await resp.json()
+        mats = [m for m in data if m["type"] != "final"]
+
+        # partner prices may fail → treat as empty
+        prices = {}
+        try:
+            p_resp = await pyfetch(f"/api/partners/{window.partner_id}/products")
+            if p_resp.ok:
+                p_data = await p_resp.json()
+                prices = {item["id_product"]: item["price"] for item in p_data}
+        except:
+            pass
+
         out.innerHTML = ""
-        for p in partners:
-            # Card container
+        for m in mats:
             card = document.createElement("div")
             card.className = "product-card"
 
-            # Name
-            title = document.createElement("h2")
-            title.innerText = p['name']
-            card.appendChild(title)
+            # checkbox to include this item
+            chk = document.createElement("input")
+            chk.type = "checkbox"
+            chk.checked = m["id_product"] in prices
+            chk.dataset.id = m["id_product"]
+            card.append(chk)
 
-            # Details: address, phone, email
-            for field, label in ("address", "Adresă"), ("phone_number", "Telefon"), ("email", "E-mail"):
-                info = document.createElement("p")
-                info.innerText = f"{label}: {p.get(field, 'N/A')}"
-                card.appendChild(info)
+            # label
+            span = document.createElement("span")
+            span.innerText = f"{m['name']} – preț curent: {prices.get(m['id_product'], 0)} RON"
+            card.append(span)
 
-            # Link to partner products
-            link = document.createElement("a")
-            link.href = f"/partners/{p['id_partner']}/products"
-            link.innerText = "Vezi produse"
-            link.className = "btn btn-link"
-            card.appendChild(link)
+            # price input, prefilled
+            inp = document.createElement("input")
+            inp.type = "number"
+            inp.min = "0"
+            inp.step = "0.01"
+            inp.value = str(prices.get(m["id_product"], 0))
+            inp.dataset.id = m["id_product"]
+            card.append(inp)
 
-            out.appendChild(card)
+            out.append(card)
     except Exception as e:
-        console.error("Fetch error:", e)
-        out.innerText = f"Eroare rețea: {e}"
+        out.innerText = f"Eroare: {e}"
 
-# Kick off on load
-asyncio.ensure_future(load_partners())
-  </py-script>
+async def save_prices(evt):
+    evt.preventDefault()
+    items = []
+    for card in document.querySelectorAll("#materials-list .product-card"):
+        chk = card.querySelector("input[type='checkbox']")
+        if not chk.checked:
+            continue
+        inp = card.querySelector("input[type='number']")
+        try:
+            p = float(inp.value)
+        except:
+            continue
+        if p > 0:
+            items.append({"id_product": int(chk.dataset.id), "price": p})
+
+    if not items:
+        window.alert("Introduceți cel puțin un preț!")
+        return
+
+    resp = await pyfetch(
+        f"/api/partners/{window.partner_id}/products",
+        method="POST",
+        headers={"Content-Type":"application/json"},
+        body=json.dumps({"prices": items}),
+        credentials="same-origin"
+    )
+    res = await resp.json()
+    if res.get("success"):
+        window.alert("Prețuri salvate")
+        await load_materials()
+    else:
+        window.alert("Eroare: " + (res.get("error") or ""))
+
+# inițializare
+asyncio.ensure_future(load_materials())
+document.getElementById("save-prices") \
+        .addEventListener("click", create_proxy(save_prices))
+</py-script>
   {% endraw %}
 </body>
 </html>
