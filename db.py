@@ -29,7 +29,7 @@ class Database:
         self.generate_dummy_data()
 
     def create_tables(self):
-        #Creeaza tabelele
+        # Creează toate tabelele + alter şi index în aceeaşi instrucţiune
         sql = """
         CREATE TABLE IF NOT EXISTS employees (
             id SERIAL PRIMARY KEY,
@@ -122,16 +122,6 @@ class Database:
         );
         """
         self.cursor.execute(sql)
-        self.cursor.execute(
-            "ALTER TABLE recipes ALTER COLUMN quantity SET DEFAULT 1"
-        )
-        self.cursor.execute(
-            "ALTER TABLE stock ADD COLUMN IF NOT EXISTS type "
-            "TEXT NOT NULL DEFAULT 'final'"
-        )
-        self.cursor.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS stock_name_uq ON stock(name)"
-        )
         self.connection.commit()
 
     def create_triggers(self):
