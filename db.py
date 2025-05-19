@@ -809,7 +809,8 @@ class Database:
     def get_employee_id(self, username: str) -> int | None:
         return self._fetchone_scalar(
             "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
-            (username,), key="id"
+            (username,),
+            key="id"
         )
 
     def get_orders_by_employee(self, emp_id: int):
@@ -895,3 +896,89 @@ class Database:
         except Exception as exc:
             self.connection.rollback()
             return {"error": str(exc)}
+
+    def create_procurement_orders(self, employee_id: int,items: list[list[int]]) -> dict:
+        if not items:
+            return {"error": "Empty item list"}
+        if employee_id is None:
+            return {"error": "Invalid employee"}
+        parts: dict[int, list[tuple[int, int, float]]] = {}
+        try:
+            with self._dict_cur() as cur:
+                for sid, qty in items:
+                    if qty <= 0:
+                        return {"error": f"Invalid qty for product {sid}"}
+                    cur.execute(
+                        """
+                        SELECT id_product, id_partner, price, quantity
+                        FROM partner_products
+                        WHERE id_stock=%s
+                        ORDER BY price ASC
+                        LIMIT 1
+                        """,
+                        (sid,))
+                    row = cur.fetchone()
+                    if not row:
+                        return {"error": f"No supplier for product {sid}"}
+                    if row["quantity"] < qty:
+                        return {"error": f"Insufficient supplier stock for {sid}"}
+                    parts.setdefault(row["id_partner"], []).append(
+                        (row["id_product"], qty, row["price"])
+                    )
+        except Exception as exc:
+            return {"error": str(exc)}
+        try:
+            with self.connection:
+                created = []
+                now = datetime.utcnow()
+                for partner_id, lst in parts.items():
+                    self.cursor.execute(
+                        """
+                        INSERT INTO partner_orders
+                          (id_partner, data, status, id_employee)
+                        VALUES (%s,%s,'pending',%s)
+                        RETURNING id_order
+                        """,
+                        (partner_id, now, employee_id))
+                    oid = self.cursor.fetchone()["id_order"]
+
+                    self.cursor.executemany(
+                        """
+                        INSERT INTO partner_order_content
+                          (id_product, id_order, quantity, price)
+                        VALUES (%s,%s,%s,%s)
+                        """,
+                        [(ppid, oid, qty, price) for ppid, qty, price in lst]
+                    )
+                    created.append(oid)
+            return {"success": True, "orders": created}
+        except Exception as exc:
+            self.connection.rollback()
+            return {"error": str(exc)}
+
+    def get_partner_order_items(self, order_id: int):
+        self.cursor.execute(
+            """
+            SELECT s.name, poc.quantity, poc.price
+            FROM partner_order_content poc
+            JOIN partner_products pp ON pp.id_product = poc.id_product
+            JOIN stock s            ON s.id_product = pp.id_stock
+            WHERE poc.id_order = %s
+            """,
+            (order_id,))
+        return self.cursor.fetchall()
+
+    def update_partner_order_status(self, partner_id: int,order_id: int,status: str) -> dict:
+        self.cursor.execute(
+            """
+            UPDATE partner_orders
+            SET status=%s
+            WHERE id_order=%s AND id_partner=%s
+            """,
+            (status, order_id, partner_id)
+        )
+        if self.cursor.rowcount == 0:
+            self.connection.rollback()
+            return {"error": "Comandă inexistentă sau nu vă aparține"}
+        self.connection.commit()
+        return {"success": True}
