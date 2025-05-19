@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  
   <title>Produse</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
@@ -10,8 +11,10 @@
 </head>
 <body>
   {% include '_navbar.html' %}
-
   <div class="main-container">
+
+    <div class="header-bar" style="justify-content: center;">
+      <h1 style="text-align: center; width: 100%;">Produse</h1>
     <div class="header-bar">
       <h1>Produse</h1>
       {% if session.user %}
@@ -23,7 +26,7 @@
       </button>
       {% endif %}
     </div>
-    <div id="output" class="product-list"><div class="spinner"></div></div>
+    <div id="output" class="product-list" style="display: grid; grid-template-columns: repeat(2, 420px); gap: 1.25rem; justify-content: center;"><div class="spinner"></div></div>
   </div>
   <div id="popup" class="popup hidden">
     <div class="popup-content">

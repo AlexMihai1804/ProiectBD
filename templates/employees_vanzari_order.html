@@ -8,39 +8,47 @@
 <body>
   {% include '_navbar.html' %}
   <div class="main-container">
-    <h2>Comanda #{{ order.id_order }}</h2>
-    <p><strong>Data:</strong> {{ order.data.strftime('%Y-%m-%d %H:%M') }}</p>
-    <p><strong>Status curent:</strong> {{ order.progress }}</p>
-    <p><strong>Client:</strong> {{ customer.name }} {{ customer.surname }} ({{ customer.email }})</p>
-    <p><strong>Adresă:</strong> {{ customer.address }} | <strong>Telefon:</strong> {{ customer.phone_number }}</p>
+    <div style="width: 100%; display: flex; flex-direction: column; align-items: flex-start; margin-left: 25%; margin-top: 10px; margin-bottom: 10px; max-width: 600px;">
+      <h2 style="text-align: left; width: 100%;">Comanda #{{ order.id_order }}</h2>
+      <p><strong>Data:</strong> {{ order.data.strftime('%Y-%m-%d %H:%M') }}</p>
+      <p><strong>Status curent:</strong> {{ order.progress }}</p>
+      <p><strong>Client:</strong> {{ customer.name }} {{ customer.surname }} ({{ customer.email }})</p>
+      <p><strong>Adresă:</strong> {{ customer.address }} | <strong>Telefon:</strong> {{ customer.phone_number }}</p>
+    </div>
 
+    <div style="width: 100%; display: flex; flex-direction: column; align-items: flex-start; margin-left: 32%; margin-top: 10px; margin-bottom: 10px; max-width: 600px;">
     <h3>Articole</h3>
-    <table class="orders-table">
-      <thead><tr><th>Produs</th><th>Bucăți</th><th>Preț (RON)</th></tr></thead>
-      <tbody>
-        {% for it in items %}
-        <tr><td>{{ it.name }}</td><td>{{ it.quantity }}</td><td>{{ it.price }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    </div>
+    <div style="display: flex; justify-content: center; width: 100%;">
+      <table class="orders-table" style="width: 60%; min-width: 400px; max-width: 700px;">
+        <thead><tr><th>Produs</th><th>Bucăți</th><th>Preț (RON)</th></tr></thead>
+        <tbody>
+          {% for it in items %}
+          <tr><td>{{ it.name }}</td><td>{{ it.quantity }}</td><td>{{ it.price }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
-    <h3>Actualizare status</h3>
-    <form method="post">
-      <select name="status">
-        {% for s in statuses %}
-          <option value="{{ s }}" {% if s==order.progress %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-primary" type="submit">Salvează</button>
-    </form>
-
-    <form method="post" style="margin-top:12px">
-      <input type="hidden" name="status" value="cancelled">
-      <button class="btn btn-secondary"
-              onclick="return confirm('Sigur anulezi această comandă?')">
-        Anulează comanda
-      </button>
-    </form>
+    
+    <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+      <h3 style="text-align: center; width: 100%;">Actualizare status</h3>
+      <form method="post" style="width: 100%; display: flex; flex-direction: column; align-items: center;">
+        <select name="status" style="width: 220px; margin-bottom: 10px;">
+          {% for s in statuses %}
+            <option value="{{ s }}" {% if s==order.progress %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary" type="submit" style="width: 220px;">Salvează</button>
+      </form>
+      <form method="post" style="margin-top:12px; width: 100%; display: flex; flex-direction: column; align-items: center;">
+        <input type="hidden" name="status" value="cancelled">
+        <button class="btn btn-secondary" style="width: 220px;"
+                onclick="return confirm('Sigur anulezi această comandă?')">
+          Anulează comanda
+        </button>
+      </form>
+    </div>
   </div>
 </body>
 </html>
