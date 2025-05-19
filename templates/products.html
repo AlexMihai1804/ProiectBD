@@ -40,7 +40,7 @@
 import asyncio, json
 from js import document, window
 from pyodide.ffi import create_proxy, create_once_callable
-from pyodide.http import pyfetch  # ← pyfetch respectă corect metoda HTTP
+from pyodide.http import pyfetch
 
 async def load_products():
     output = document.getElementById("output")

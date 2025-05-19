@@ -277,7 +277,6 @@ def api_partners():
 
 @app.route('/partners/<int:partner_id>/products')
 def partner_products_page(partner_id):
-    # lookup partner name for display
     partner = database.get_partner(partner_id)
     if not partner:
         return "Partener inexistent", 404
@@ -330,7 +329,6 @@ def api_employee_update_order():
 
 @app.route('/api/employee/productie/recipes', methods=['GET'])
 def get_recipes():
-    # only production dept may query
     if session.get('employee_dept') != 'productie':
         return jsonify({'error': 'Not authorized'}), 403
     recipes = database.get_recipes()

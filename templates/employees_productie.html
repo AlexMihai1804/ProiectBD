@@ -51,7 +51,7 @@ async def load_recipes():
         url = f"/api/employee/productie/recipes?_={int(Date.now())}"
         resp = await pyfetch(
             url,
-            credentials="same-origin"        # ← include session cookie
+            credentials="same-origin"
         )
         console.log('Fetch status', resp.status)
         if not resp.ok:
@@ -160,7 +160,6 @@ async def submit_new(evt):
             alert('Salvat')
             document.getElementById('recipe-form').reset()
             document.getElementById('recipe-popup').classList.add('hidden')
-            # remove dynamically added ingredient rows (keep the first)
             rows = document.querySelectorAll('.ingredient-row')
             for i in range(rows.length - 1, 0, -1):
                 rows.item(i).remove()

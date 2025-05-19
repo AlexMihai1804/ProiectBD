@@ -74,7 +74,7 @@ class Database:
         CREATE TABLE IF NOT EXISTS recipes (
             id_recipe SERIAL PRIMARY KEY,
             id_final INTEGER NOT NULL REFERENCES stock(id_product),
-            quantity INTEGER NOT NULL DEFAULT 1,       -- DEFAULT added
+            quantity INTEGER NOT NULL DEFAULT 1,
             id_material1 INTEGER NOT NULL REFERENCES stock(id_product),
             quantity_material1 INTEGER NOT NULL,
             id_material2 INTEGER REFERENCES stock(id_product),
@@ -227,7 +227,7 @@ class Database:
             return row[key or list(row.keys())[0]]
 
     def get_stock(self, final_only: bool = True):
-        with self._dict_cur() as cur:  # ← independent cursor
+        with self._dict_cur() as cur:
             if final_only:
                 cur.execute("SELECT * FROM stock WHERE type='final'")
             else:
@@ -240,7 +240,7 @@ class Database:
             SELECT s.id_product,
                    s.name,
                    s.quantity,
-                   s.type,                     -- ← nou
+                   s.type,
                    pp.price             AS partner_price,
                    pr.name              AS partner_name
             FROM stock s
