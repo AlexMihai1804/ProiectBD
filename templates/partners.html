@@ -20,7 +20,6 @@
     <button id="save-prices" class="btn btn-primary">Salvează prețuri</button>
   </div>
 
-  <!-- inject partner_id into JS -->
   <script>
     window.partner_id = {{ partner_id }};
   </script>
@@ -43,7 +42,6 @@ async def load_materials():
         data = await resp.json()
         mats = [m for m in data if m["type"] != "final"]
 
-        # partner prices may fail → treat as empty
         prices = {}
         try:
             p_resp = await pyfetch(f"/api/partners/{window.partner_id}/products")
@@ -58,19 +56,16 @@ async def load_materials():
             card = document.createElement("div")
             card.className = "product-card"
 
-            # checkbox to include this item
             chk = document.createElement("input")
             chk.type = "checkbox"
             chk.checked = m["id_product"] in prices
             chk.dataset.id = m["id_product"]
             card.append(chk)
 
-            # label
             span = document.createElement("span")
             span.innerText = f"{m['name']} – preț curent: {prices.get(m['id_product'], 0)} RON"
             card.append(span)
 
-            # price input, prefilled
             inp = document.createElement("input")
             inp.type = "number"
             inp.min = "0"
@@ -116,7 +111,6 @@ async def save_prices(evt):
     else:
         window.alert("Eroare: " + (res.get("error") or ""))
 
-# inițializare
 asyncio.ensure_future(load_materials())
 document.getElementById("save-prices") \
         .addEventListener("click", create_proxy(save_prices))

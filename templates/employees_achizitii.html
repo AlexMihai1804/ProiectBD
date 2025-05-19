@@ -76,22 +76,18 @@ async def send_order(evt):
     window.alert("Trimis!" if result.get("success") else result.get("error","Eroare"))
     await refresh()
 
-# Helper to build table rows
 from js import document
 
 def row(item):
     tr = document.createElement("tr")
-    # ID and name
     for key in ("id_product", "name"):
         td = document.createElement("td")
         td.textContent = item[key]
         tr.appendChild(td)
-    # stock
     td_stock = document.createElement("td")
     td_stock.style.textAlign = "center"
     td_stock.textContent = item.get("quantity", 0)
     tr.appendChild(td_stock)
-    # input
     inp = document.createElement("input")
     inp.type = "number"
     inp.min = "0"
@@ -111,16 +107,12 @@ def row(item):
         tr.appendChild(td)
     return tr
 
-# Initialize
 asyncio.ensure_future(refresh())
 
-# Hook up button
 btn = document.getElementById("procure-btn")
 btn.addEventListener("click", create_proxy(send_order))
   </py-script>
   {% endraw %}
-
-  <!-- Navigation buttons -->
   <div style="margin:20px 0; text-align:center">
     <button id="procure-btn" class="btn btn-primary">Plasează achiziție</button>
     <button class="btn btn-secondary" onclick="window.location='/employees/achizitii/orders'">Vezi comenzi parteneri</button>

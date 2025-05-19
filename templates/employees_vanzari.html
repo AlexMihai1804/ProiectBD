@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>Departament Vânzări</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <!-- PyScript -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.3.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2025.3.1/core.js"></script>
 </head>
@@ -32,15 +31,18 @@ from pyodide.http import pyfetch
 
 body = document.querySelector("#orders-table tbody")
 
-# ---------- API ----------
 async def get_orders():
-    return await (await pyfetch("/api/employee/orders")).json()
+    resp = await pyfetch(
+        "/api/employee/orders",
+        credentials="same-origin"
+    )
+    if not resp.ok:
+        return {"error": f"HTTP {resp.status}"}
+    return await resp.json()
 
-# ---------- builders ----------
 def build_row(o):
     tr = document.createElement("tr")
 
-    # id link ------------------------------------------------------------
     td_id = document.createElement("td")
     a = document.createElement("a")
     a.href = f"/employees/vanzari/order/{o['id_order']}"
@@ -48,24 +50,20 @@ def build_row(o):
     td_id.appendChild(a)
     tr.appendChild(td_id)
 
-    # formatted date -----------------------------------------------------
     td_date = document.createElement("td")
     td_date.textContent = o["date_fmt"]
     tr.appendChild(td_date)
 
-    # qty ---------------------------------------------------------------
     td_qty = document.createElement("td")
     td_qty.textContent = str(o["qty"])
     tr.appendChild(td_qty)
 
-    # status ------------------------------------------------------------
     td_status = document.createElement("td")
     td_status.textContent = o["progress"]
     tr.appendChild(td_status)
 
     return tr
 
-# ---------- refresh ----------
 async def refresh():
     body.innerHTML = "<tr><td colspan='4' style='text-align:center'>Loading…</td></tr>"
     data = await get_orders()

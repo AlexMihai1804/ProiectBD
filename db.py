@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
@@ -22,7 +23,6 @@ class Database:
         )
         self.create_tables()
         self.create_triggers()
-        # populate with dummy data if tables empty
         self.generate_dummy_data()
 
     def create_tables(self):
@@ -51,7 +51,7 @@ class Database:
         );
         CREATE TABLE IF NOT EXISTS stock (
             id_product SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
             price NUMERIC(10,2) NOT NULL,
             description TEXT NOT NULL,
             quantity INTEGER NOT NULL CHECK (quantity >= 0),
@@ -118,12 +118,16 @@ class Database:
         );
         """
         self.cursor.execute(ddl)
-        # make sure DEFAULT exists when upgrading ------------------------
         self.cursor.execute(
             "ALTER TABLE recipes ALTER COLUMN quantity SET DEFAULT 1"
         )
-        # ensure column exists when upgrading an older DB
-        self.cursor.execute("ALTER TABLE stock ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'final'")
+        self.cursor.execute(
+            "ALTER TABLE stock ADD COLUMN IF NOT EXISTS type "
+            "TEXT NOT NULL DEFAULT 'final'"
+        )
+        self.cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS stock_name_uq ON stock(name)"
+        )
         self.connection.commit()
 
     def create_triggers(self):
@@ -184,8 +188,6 @@ class Database:
         """
         self.cursor.execute(sql)
         self.connection.commit()
-
-        # NEW – when a partner order becomes completed increase stock
         self.cursor.execute("""
         CREATE OR REPLACE FUNCTION trg_after_update_partner_order_status_fn()
         RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -211,30 +213,21 @@ class Database:
         """)
         self.connection.commit()
 
-    # -------- NEW: private helper for read-only queries -------------
     def _dict_cur(self):
-        """Return a fresh RealDictCursor (auto-closed via context-manager)."""
         return self.connection.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         )
 
-    # ------------------------ patched helpers -----------------------
-
     def _fetchone_scalar(self, query, params=(), key=None):
-        with self._dict_cur() as cur:          # ← use dedicated cursor
+        with self._dict_cur() as cur:
             cur.execute(query, params)
             row = cur.fetchone()
             if row is None:
                 return None
             return row[key or list(row.keys())[0]]
 
-    # ---------- stock helpers ----------
     def get_stock(self, final_only: bool = True):
-        """
-        Return stock items. If final_only=True, filter type='final'.
-        Uses its own cursor so it never interferes with other result sets.
-        """
-        with self._dict_cur() as cur:          # ← independent cursor
+        with self._dict_cur() as cur:  # ← independent cursor
             if final_only:
                 cur.execute("SELECT * FROM stock WHERE type='final'")
             else:
@@ -242,15 +235,12 @@ class Database:
             return cur.fetchall()
 
     def get_cheapest_partner_offer(self):
-        """
-        For every product return quantity on hand, cheapest partner price
-        and partner *name* (not id).
-        """
         self.cursor.execute(
             """
             SELECT s.id_product,
                    s.name,
                    s.quantity,
+                   s.type,                     -- ← nou
                    pp.price             AS partner_price,
                    pr.name              AS partner_name
             FROM stock s
@@ -286,20 +276,15 @@ class Database:
     def get_partners(self):
         self.cursor.execute("SELECT * FROM partners")
         return self.cursor.fetchall()
-    
+
     def get_partner(self, partner_id):
         self.cursor.execute(
             "SELECT * FROM partners WHERE id_partner = %s",
             (partner_id,)
         )
         return self.cursor.fetchone()
-    
+
     def get_partner_products(self, partner_id: int):
-        """
-        Return a list of dicts like
-          { 'id_product': 1, 'name': 'Laptop', 'price': 2600.0, 'quantity': 5 }
-        for every row in partner_products joined to stock.
-        """
         sql = """
         SELECT
           pp.id_stock   AS id_product,
@@ -311,10 +296,8 @@ class Database:
           ON pp.id_stock = s.id_product
         WHERE pp.id_partner = %s
         """
-        # execute the query
         self.cursor.execute(sql, (partner_id,))
-        rows = self.cursor.fetchall()  # list of tuples
-        # Directly return the rows as they are already RealDictRow objects
+        rows = self.cursor.fetchall()
         return rows
 
     def get_partners_products(self):
@@ -330,7 +313,6 @@ class Database:
         return self.cursor.fetchall()
 
     def get_recipes(self):
-        """Fetch all recipes (dedicated cursor to avoid clobbering)."""
         with self._dict_cur() as cur:
             cur.execute("SELECT * FROM recipes")
             return cur.fetchall()
@@ -468,7 +450,6 @@ class Database:
             )
             self.connection.commit()
             return {"success": True}
-        
         except Exception as exc:
             self.connection.rollback()
             return {"error": str(exc)}
@@ -508,9 +489,6 @@ class Database:
         return self.cursor.fetchall()
 
     def get_customer_id(self, username):
-        """
-        Return id_customer for a given username or None.
-        """
         return self._fetchone_scalar(
             "SELECT id_customer FROM customers WHERE LOWER(username)=LOWER(%s)",
             (username,),
@@ -518,9 +496,6 @@ class Database:
         )
 
     def create_customer(self, name, surname, username, password, email, address='', phone_number=''):
-        """
-        Insert a new customer. Returns {"success":True} or {"error": "..."}.
-        """
         try:
             self.cursor.execute(
                 "INSERT INTO customers (name,surname,username,password,email,address,phone_number) "
@@ -534,9 +509,6 @@ class Database:
             return {"error": str(exc)}
 
     def get_customer_by_username(self, username):
-        """
-        Return full customer record or None.
-        """
         self.cursor.execute(
             "SELECT id_customer, name, surname, username, email, address, phone_number "
             "FROM customers WHERE username = %s",
@@ -545,9 +517,6 @@ class Database:
         return self.cursor.fetchone()
 
     def get_customer_by_id(self, cid):
-        """
-        Return customer record for a given id_customer.
-        """
         self.cursor.execute(
             "SELECT id_customer, name, surname, email, address, phone_number "
             "FROM customers WHERE id_customer = %s",
@@ -563,426 +532,366 @@ class Database:
         return self.cursor.fetchone()
 
     def generate_dummy_data(self):
-        """
-        Populate employees, customers, stock, partners, partner_products,
-        orders, order_content, partner_orders, partner_order_content, recipes.
-        """
-        # seed employees
-        if self._fetchone_scalar("SELECT COUNT(*) FROM employees") == 0:
-            employees = [
-                ("Ion",    "Popescu",  "sales",      3500.00, "ion@example.com",    "0712345678", "Str. A, Nr.1", "ionp",   "pass123"),
-                ("Maria",  "Ionescu",  "sales",      3600.00, "maria@example.com",  "0723456789", "Str. B, Nr.2", "mariai", "pass123"),
+        try:
+            if self._fetchone_scalar("SELECT COUNT(*) FROM employees") == 0:
+                employees = [
+                    ("Ion", "Popescu", "sales", 3500.00, "ion@example.com", "0712345678", "Str. A, Nr.1", "ionp",
+                     "pass123"),
+                    ("Maria", "Ionescu", "sales", 3600.00, "maria@example.com", "0723456789", "Str. B, Nr.2", "mariai",
+                     "pass123"),
+                ]
+                self.cursor.executemany(
+                    "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    employees
+                )
+            achizitii = [
+                (
+                    "George", "Enache", "achizitii", 3400.00, "george@ex.com", "0731231231", "Str. C 3", "geoe",
+                    "pass123"),
+                ("Ana", "Popa", "achizitii", 3450.00, "ana.p@ex.com", "0743213213", "Str. D 4", "anap", "pass123")
             ]
             self.cursor.executemany(
                 "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                employees
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (username) DO NOTHING",
+                achizitii
             )
-
-        # always ensure achizitii employees exist
-        achizitii = [
-            ("George", "Enache", "achizitii", 3400.00, "george@ex.com", "0731231231", "Str. C 3", "geoe", "pass123"),
-            ("Ana",    "Popa",   "achizitii", 3450.00, "ana.p@ex.com",  "0743213213", "Str. D 4", "anap", "pass123")
-        ]
-        self.cursor.executemany(
-            "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-            "ON CONFLICT (username) DO NOTHING",
-            achizitii
-        )
-        
-        
-        # always ensure productie employees exist
-        productie = [
-            ("Calin", "Poenaru", "productie", 4000.00, "calin@ex.com", "0736231231", "Str. C 3", "calin_p", "pass123"),
-            ("Sana",   "Alexa",  "productie", 4050.00, "sana@ex.com",  "0745213213", "Str. D 4", "sana_a", "pass123")
-        ]
-        self.cursor.executemany(
-            "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-            "ON CONFLICT (username) DO NOTHING",
-            productie
-        )
-
-        # seed customers
-        if self._fetchone_scalar("SELECT COUNT(*) FROM customers") == 0:
-            customers = [
-                ("Andrei", "Georgescu", "andreg", "pwd1", "andrei@example.com", "Bd X 10", "0730000000"),
-                ("Elena", "Marinescu", "elenam", "pwd2", "elena@example.com", "Str Y 20", "0740000000")
+            productie = [
+                ("Calin", "Poenaru", "productie", 4000.00, "calin@ex.com", "0736231231", "Str. C 3", "calin_p",
+                 "pass123"),
+                ("Sana", "Alexa", "productie", 4050.00, "sana@ex.com", "0745213213", "Str. D 4", "sana_a", "pass123")
             ]
             self.cursor.executemany(
-                "INSERT INTO customers (name,surname,username,password,email,address,phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                customers
+                "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (username) DO NOTHING",
+                productie
             )
-        # seed stock
-        if self._fetchone_scalar("SELECT COUNT(*) FROM stock") == 0:
-            products = [
-                ("Laptop",  2500.00, "High-end laptop", 10, "final"),
-                ("Telefon", 1500.00, "Smartphone modern", 20, "final"),
-                ("Mouse",    100.00, "Wireless mouse",  50, "final"),
-                ("Șurub",      1.00, "Materie primă",   500, "materie"),
-            ]
-            self.cursor.executemany(
-                "INSERT INTO stock (name,price,description,quantity,type) VALUES (%s,%s,%s,%s,%s)",
-                products
-            )
-        # seed partners
-        if self._fetchone_scalar("SELECT COUNT(*) FROM partners") == 0:
-            partners = [
-                ("Distribuitor A", "distA", "passA", "Str. Distrib A", "0750000001", "a@dist.ro"),
-                ("Distribuitor B", "distB", "passB", "Str. Distrib B", "0750000002", "b@dist.ro")
-            ]
-            self.cursor.executemany(
-                "INSERT INTO partners (name,username,password,address,phone_number,email) "
-                "VALUES (%s,%s,%s,%s,%s,%s)",
-                partners
-            )
-
-        # seed partner_products
-        if self._fetchone_scalar("SELECT COUNT(*) FROM partner_products") == 0:
-            # map first stock ids to partners
-            partner_products = [
-                (1, 2600.00, 5, 1),
-                (2, 1550.00, 10, 2)
-            ]
-            self.cursor.executemany(
-                "INSERT INTO partner_products (id_stock,price,quantity,id_partner) "
-                "VALUES (%s,%s,%s,%s)",
-                partner_products
-            )
-
-        # seed orders and order_content
-        if self._fetchone_scalar("SELECT COUNT(*) FROM orders") == 0:
-            # use first customer and first employee
-            cust = self._fetchone_scalar("SELECT id_customer FROM customers LIMIT 1")
-            emp  = self._fetchone_scalar("SELECT id FROM employees LIMIT 1")
-            now  = datetime.utcnow()
-            self.cursor.execute(
-                "INSERT INTO orders (id_client,data,progress,id_employee) VALUES (%s,%s,%s,%s) RETURNING id_order",
-                (cust, now, "completed", emp)
-            )
-            oid = self.cursor.fetchone()["id_order"]
-            # add one product
-            self.cursor.execute(
-                "INSERT INTO order_content (id_order,id_product,quantity,price) VALUES (%s,%s,%s,%s)",
-                (oid, 1, 1, self._fetchone_scalar("SELECT price FROM stock WHERE id_product=1"))
-            )
-
-        # seed partner_orders and partner_order_content
-        if self._fetchone_scalar("SELECT COUNT(*) FROM partner_orders") == 0:
-            part = self._fetchone_scalar("SELECT id_partner FROM partners LIMIT 1")
-            emp  = self._fetchone_scalar("SELECT id FROM employees LIMIT 1")
-            now  = datetime.utcnow()
-            self.cursor.execute(
-                "INSERT INTO partner_orders (id_partner,data,status,id_employee) VALUES (%s,%s,%s,%s) RETURNING id_order",
-                (part, now, "pending", emp)
-            )
-            poid = self.cursor.fetchone()["id_order"]
-            # add one partner product
-            self.cursor.execute(
-                "INSERT INTO partner_order_content (id_product,id_order,quantity,price) VALUES (%s,%s,%s,%s)",
-                (1, poid, 2, self._fetchone_scalar("SELECT price FROM partner_products WHERE id_product=1"))
-            )
-
-        # seed recipes
-        if self._fetchone_scalar("SELECT COUNT(*) FROM recipes") == 0:
-            # final product id 1 made from product ids 2 and 3
-            print("Inserting dummy recipe data...")
-            self.cursor.execute(
-                "INSERT INTO recipes (id_final,quantity,id_material1,quantity_material1,"
-                "id_material2,quantity_material2) VALUES (%s,%s,%s,%s,%s,%s)",
-                (1, 1, 2, 2, 3, 1)
-            )
-
-        self.connection.commit()
-
-    # adjust to case-insensitive lookup
-    def get_employee_id(self, username):
-        return self._fetchone_scalar(
-            "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
-            (username,), key='id'
-        )
-
-    def get_orders_by_employee(self, emp_id):
-        self.cursor.execute(
-            "SELECT * FROM orders WHERE id_employee=%s ORDER BY data DESC",
-            (emp_id,)
-        )
-        return self.cursor.fetchall()
-
-    def update_order_status(self, employee_username, order_id, new_status):
-        allowed = {'pending', 'processing', 'shipped', 'completed', 'cancelled'}
-        if new_status not in allowed:
-            return {'error': 'Invalid status'}
-
-        emp_id = self.get_employee_id(employee_username)
-        if not emp_id:
-            return {'error': 'Employee not found'}
-
-        self.cursor.execute(
-            "SELECT progress FROM orders WHERE id_order=%s AND id_employee=%s",
-            (order_id, emp_id)
-        )
-        row = self.cursor.fetchone()
-        if not row:
-            return {'error': 'Order not found or not assigned to you'}
-        old_status = row['progress']
-        if old_status == 'cancelled':
-            return {'error': 'Order already cancelled'}
-        if old_status == new_status:
-            return {'success': True}
-
-        try:
-            with self.connection:
-                # dacă anulează – repunem în stoc
-                if new_status == 'cancelled':
-                    self.cursor.execute(
-                        "SELECT id_product, quantity FROM order_content WHERE id_order=%s",
-                        (order_id,)
-                    )
-                    for item in self.cursor.fetchall():
-                        self.cursor.execute(
-                            "UPDATE stock SET quantity = quantity + %s WHERE id_product = %s",
-                            (item['quantity'], item['id_product'])
-                        )
-                self.cursor.execute(
-                    "UPDATE orders SET progress = %s WHERE id_order = %s",
-                    (new_status, order_id)
+            if self._fetchone_scalar("SELECT COUNT(*) FROM customers") == 0:
+                customers = [
+                    ("Andrei", "Georgescu", "andreg", "pwd1", "andrei@example.com", "Bd X 10", "0730000000"),
+                    ("Elena", "Marinescu", "elenam", "pwd2", "elena@example.com", "Str Y 20", "0740000000")
+                ]
+                self.cursor.executemany(
+                    "INSERT INTO customers (name,surname,username,password,email,address,phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    customers
                 )
-            return {'success': True}
+            if self._fetchone_scalar("SELECT COUNT(*) FROM stock") == 0:
+                products = [
+                    ("Cola 0.5 L", 2.50, "Băutură răcoritoare", 100, "final"),
+                    ("Cola 1 L", 4.00, "Băutură răcoritoare", 80, "final"),
+                    ("Orange Soda 0.5 L", 2.50, "Suc portocale carbog.", 120, "final"),
+                    ("Lemonade 0.5 L", 2.20, "Limonadă carbog.", 90, "final"),
+                    ("Apă carbogazoasă", 0.20, "Materie primă", 1000, "materie"),
+                    ("Zahăr", 0.10, "Materie primă", 800, "materie"),
+                    ("CO₂", 0.05, "Dioxid de carbon", 2000, "materie"),
+                    ("Colorant caramel", 0.15, "Aditiv", 300, "materie"),
+                    ("Acid fosforic", 0.08, "Aditiv", 300, "materie"),
+                    ("Cofeină", 0.12, "Aditiv", 200, "materie"),
+                    ("Aromă portocale", 0.14, "Aromă", 400, "materie"),
+                    ("Aromă lămâie", 0.14, "Aromă", 400, "materie"),
+                    ("PET 0.5 L", 0.30, "Sticlă plastic", 1000, "materie"),
+                    ("PET 1 L", 0.35, "Sticlă plastic", 800, "materie"),
+                    ("Capac PET", 0.05, "Capac sticlă", 1800, "materie"),
+                    ("Etichetă", 0.04, "Etichetă autoadez.", 2000, "materie"),
+                ]
+                self.cursor.executemany(
+                    "INSERT INTO stock (name,price,description,quantity,type) "
+                    "VALUES (%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (name) DO NOTHING",
+                    products
+                )
+            if self._fetchone_scalar("SELECT COUNT(*) FROM partners") == 0:
+                partners = [
+                    ("Furnizor Ambalaje", "bottlesupp", "pwdbs", "Str. Ambalaje 1", "0751000001", "bottle@sup.ro"),
+                    ("Furnizor Ingrediente", "ingsupp", "pwdin", "Str. Ingred  2", "0752000002", "ing@sup.ro"),
+                ]
+                self.cursor.executemany(
+                    "INSERT INTO partners (name,username,password,address,phone_number,email) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    partners
+                )
+            if self._fetchone_scalar("SELECT COUNT(*) FROM partner_products") == 0:
+                self.cursor.execute("SELECT id_product, name FROM stock")
+                id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
+                self.cursor.execute("SELECT id_partner, username FROM partners")
+                pid_by_user = {r['username']: r['id_partner'] for r in self.cursor.fetchall()}
+                partner_products = [
+                    (id_by_name["PET 0.5 L"], 0.32, 10000, pid_by_user["bottlesupp"]),
+                    (id_by_name["PET 1 L"], 0.37, 8000, pid_by_user["bottlesupp"]),
+                    (id_by_name["Capac PET"], 0.06, 15000, pid_by_user["bottlesupp"]),
+                    (id_by_name["Etichetă"], 0.045, 20000, pid_by_user["bottlesupp"]),
+                    (id_by_name["Zahăr"], 0.11, 5000, pid_by_user["ingsupp"]),
+                    (id_by_name["CO₂"], 0.055, 8000, pid_by_user["ingsupp"]),
+                    (id_by_name["Colorant caramel"], 0.17, 3000, pid_by_user["ingsupp"]),
+                    (id_by_name["Acid fosforic"], 0.09, 3000, pid_by_user["ingsupp"]),
+                    (id_by_name["Cofeină"], 0.13, 2000, pid_by_user["ingsupp"]),
+                    (id_by_name["Aromă portocale"], 0.15, 4000, pid_by_user["ingsupp"]),
+                    (id_by_name["Aromă lămâie"], 0.15, 4000, pid_by_user["ingsupp"]),
+                ]
+                self.cursor.executemany(
+                    "INSERT INTO partner_products (id_stock, price, quantity, id_partner) "
+                    "VALUES (%s,%s,%s,%s)",
+                    partner_products
+                )
+            if self._fetchone_scalar("SELECT COUNT(*) FROM recipes") == 0:
+                self.cursor.execute("SELECT id_product,name FROM stock")
+                id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
+                recipes_rows = [
+                    (id_by_name["Cola 0.5 L"], 1,
+                     id_by_name["Apă carbogazoasă"], 1,
+                     id_by_name["Zahăr"], 1,
+                     id_by_name["Colorant caramel"], 1,
+                     id_by_name["Acid fosforic"], 1,
+                     id_by_name["Cofeină"], 1),
+                    (id_by_name["Cola 1 L"], 1,
+                     id_by_name["Apă carbogazoasă"], 2,
+                     id_by_name["Zahăr"], 2,
+                     id_by_name["Colorant caramel"], 2,
+                     id_by_name["Acid fosforic"], 2,
+                     id_by_name["Cofeină"], 2),
+                    (id_by_name["Orange Soda 0.5 L"], 1,
+                     id_by_name["Apă carbogazoasă"], 1,
+                     id_by_name["Zahăr"], 1,
+                     id_by_name["Aromă portocale"], 1,
+                     None, None,
+                     None, None),
+                    (id_by_name["Lemonade 0.5 L"], 1,
+                     id_by_name["Apă carbogazoasă"], 1,
+                     id_by_name["Zahăr"], 1,
+                     id_by_name["Aromă lămâie"], 1,
+                     None, None,
+                     None, None),
+                ]
+                for (idf, qty,
+                     m1, q1, m2, q2, m3, q3,
+                     m4, q4, m5, q5) in recipes_rows:
+                    self.cursor.execute("""
+                        INSERT INTO recipes (id_final, quantity,
+                                             id_material1, quantity_material1,
+                                             id_material2, quantity_material2,
+                                             id_material3, quantity_material3,
+                                             id_material4, quantity_material4,
+                                             id_material5, quantity_material5)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, (idf, qty,
+                          m1, q1, m2, q2, m3, q3,
+                          m4, q4, m5, q5))
+            if self._fetchone_scalar("SELECT COUNT(*) FROM orders") == 0:
+                cust = self._fetchone_scalar(
+                    "SELECT id_customer FROM customers LIMIT 1")
+                emp = self._fetchone_scalar(
+                    "SELECT id FROM employees WHERE department='sales' LIMIT 1")
+                now = datetime.utcnow()
+                self.cursor.execute("SELECT id_product,name,price FROM stock")
+                by_name = {r['name']: (r['id_product'], r['price'])
+                           for r in self.cursor.fetchall()}
+                order_items = [("Cola 0.5 L", 3), ("Orange Soda 0.5 L", 2)]
+                self.cursor.execute(
+                    "INSERT INTO orders (id_client,data,progress,id_employee) "
+                    "VALUES (%s,%s,'completed',%s) RETURNING id_order",
+                    (cust, now, emp))
+                oid = self.cursor.fetchone()['id_order']
+                for name, qty in order_items:
+                    pid, price = by_name.get(name, (None, None))
+                    if pid is None or price is None:
+                        continue
+                    self.cursor.execute(
+                        "INSERT INTO order_content "
+                        "(id_order, id_product, quantity, price) "
+                        "VALUES (%s,%s,%s,%s)",
+                        (oid, pid, qty, price))
+            self.connection.commit()
         except Exception as exc:
+            import traceback, sys
+            traceback.print_exc(file=sys.stderr)
             self.connection.rollback()
-            return {'error': str(exc)}
 
-    def get_order_items(self, order_id):
-        """
-        Return list of items (name, quantity, price) for one order.
-        """
+    def get_partner_order(self, order_id: int, employee_id: int | None = None):
+        sql = "SELECT * FROM partner_orders WHERE id_order=%s"
+        params = [order_id]
+        if employee_id is not None:
+            sql += " AND id_employee=%s"
+            params.append(employee_id)
+        self.cursor.execute(sql, tuple(params))
+        return self.cursor.fetchone()
+
+    def get_partner_orders_by_partner(self, partner_id: int):
         self.cursor.execute(
-            """SELECT s.name, oc.quantity, oc.price
-               FROM order_content oc
-               JOIN stock s ON s.id_product = oc.id_product
-               WHERE oc.id_order = %s""",
-            (order_id,)
+            "SELECT * FROM partner_orders "
+            "WHERE id_partner=%s "
+            "ORDER BY data DESC",
+            (partner_id,)
         )
         return self.cursor.fetchall()
 
-    def get_partner_order_items(self, order_id):
-        """
-        Return list of rows for a partner order:
-        name, quantity, price.
-        """
-        self.cursor.execute("""
-            SELECT s.name, poc.quantity, poc.price
-            FROM partner_order_content poc
-            JOIN partner_products pp ON pp.id_product = poc.id_product
-            JOIN stock s            ON s.id_product = pp.id_stock
-            WHERE poc.id_order = %s
-        """, (order_id,))
-        return self.cursor.fetchall()
-
-    # ---------- procurement helper ----------
-    def create_procurement_orders(self, employee_id: int, item_list: list):
-        """
-        Receive list[(product_id, qty)], splits them per cheapest partner
-        and creates one partner_order/partner. Returns {"success":True}.
-        """
-        if not item_list:
-            return {"error": "Empty list"}
+    def upsert_partner_prices(self, partner_id: int, price_list: list[dict]) -> dict:
         try:
             with self.connection:
-                # map product -> (partner_id, price)
-                self.cursor.execute("""
-                    SELECT pp.id_stock, pp.id_partner, pp.price
-                    FROM partner_products pp
-                    JOIN (
-                        SELECT id_stock, MIN(price) AS p
-                        FROM partner_products
-                        GROUP BY id_stock
-                    ) m ON m.id_stock = pp.id_stock AND m.p = pp.price
-                """)
-                cheapest = {(r['id_stock']): (r['id_partner'], r['price'])
-                            for r in self.cursor.fetchall()}
-
-                # group items by partner
-                grouped = {}
-                for pid, qty in item_list:
-                    if pid not in cheapest:
-                        raise LookupError("No supplier for product")
-                    partner, price = cheapest[pid]
-                    grouped.setdefault(partner, []).append((pid, qty, price))
-
-                for partner_id, rows in grouped.items():
-                    now = datetime.utcnow()
-                    self.cursor.execute(
-                        "INSERT INTO partner_orders (id_partner,data,status,id_employee) "
-                        "VALUES (%s,%s,'pending',%s) RETURNING id_order",
-                        (partner_id, now, employee_id)
+                for item in price_list:
+                    pid = item["id_product"]
+                    price = item["price"]
+                    updated = self.cursor.execute(
+                        "UPDATE partner_products "
+                        "SET price=%s "
+                        "WHERE id_stock=%s AND id_partner=%s",
+                        (price, pid, partner_id)
                     )
-                    poid = self.cursor.fetchone()['id_order']
-                    for pid, qty, price in rows:
+                    if self.cursor.rowcount == 0:
                         self.cursor.execute(
-                            "INSERT INTO partner_order_content (id_product,id_order,quantity,price) "
-                            "VALUES (%s,%s,%s,%s)",
-                            (self._pid_from_stock(pid), poid, qty, price)
+                            "INSERT INTO partner_products "
+                            "  (id_stock, price, quantity, id_partner) "
+                            "VALUES (%s,%s,0,%s)",
+                            (pid, price, partner_id)
                         )
             return {"success": True}
         except Exception as exc:
             self.connection.rollback()
             return {"error": str(exc)}
 
-    def _pid_from_stock(self, stock_id):
-        """return partner_products.id_product for given stock id_stock."""
-        return self._fetchone_scalar(
-            "SELECT id_product FROM partner_products WHERE id_stock=%s LIMIT 1",
-            (stock_id,), 'id_product')
-    
-    def add_user(self, user_type, data):
-        if user_type not in ["employee", "customer", "partner"]:
-            return {"error" : "Invalid user type"}
-    
+    def produce_product(self, recipe_id: int, quantity: int) -> dict:
+        if quantity <= 0:
+            return {"error": "Invalid quantity"}
+        self.cursor.execute("""
+            SELECT r.*, s.name, s.price, s.description, s.type
+            FROM recipes r
+            JOIN stock  s ON s.id_product = r.id_final
+            WHERE r.id_final = %s
+        """, (recipe_id,))
+        recipe = self.cursor.fetchone()
+        if not recipe:
+            return {"error": "Recipe not found"}
         try:
-            if user_type == "employee":
+            with self.connection:
+                for i in range(1, 6):
+                    mat_id = recipe.get(f"id_material{i}")
+                    mat_qty = recipe.get(f"quantity_material{i}")
+                    if mat_id and mat_qty:
+                        need = mat_qty * quantity
+                        have = self._fetchone_scalar(
+                            "SELECT quantity FROM stock WHERE id_product=%s",
+                            (mat_id,), key="quantity")
+                        if have is None or have < need:
+                            raise ValueError("Insufficient stock for material")
+                        self.cursor.execute(
+                            "UPDATE stock SET quantity = quantity - %s "
+                            "WHERE id_product = %s",
+                            (need, mat_id))
+                added_qty = quantity * recipe["quantity"]
                 self.cursor.execute(
-                    """
-                    INSERT INTO employees (name, surname, department, salary, email, phone_number, address, username, password)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        data["name"],
-                        data["surname"],
-                        data["department"],
-                        data["salary"],
-                        data["email"],
-                        data["phone_number"],
-                        data["address"],
-                        data["username"],
-                        data["password"]
-                    )
+                    "UPDATE stock SET quantity = quantity + %s "
+                    "WHERE id_product = %s",
+                    (added_qty, recipe_id)
                 )
-            
-            elif user_type == "customer":
-                self.cursor.execute(
-                    """
-                    INSERT INTO customers (name, surname, username, password, email, address, phone_number)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        data["name"],
-                        data["surname"],
-                        data["username"],
-                        data["password"],
-                        data["email"],
-                        data.get("address", "null"),
-                        data.get("phone_number", "null")
+                if self.cursor.rowcount == 0:
+                    self.cursor.execute(
+                        """
+                        INSERT INTO stock
+                          (id_product, name, price, description, quantity, type)
+                        VALUES (%s,%s,%s,%s,%s,%s)
+                        """,
+                        (
+                            recipe_id,
+                            recipe["name"],
+                            recipe["price"],
+                            recipe["description"],
+                            added_qty,
+                            recipe["type"]
+                        )
                     )
-                )
-                
-            elif user_type == "partner":
-                self.cursor.execute(
-                    """
-                    INSERT INTO partners (name, username, password, address, phone_number, email)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        data["name"],
-                        data["username"],
-                        data["password"],
-                        data.get("address"),
-                        data.get("phone_number"),
-                        data.get("email")
-                    )
-                )
-            
             self.connection.commit()
-            return {"succes" : True}
-    
-        except psycopg2.IntegrityError as e:
-            self.connection.rollback()
-            return {"error": "Username already exists"}
-        
-        except Exception as e:
-            self.connection.rollback()
-            return{"error" : str(e)}
-
-    def add_recipe(self, final_name: str, ingredients: list[dict]):
-        """
-        Insert a new recipe; always stores a base quantity (=1) and
-        guarantees DB rollback on failure.
-        """
-        try:
-            with self.connection:
-                id_final = self._fetchone_scalar(
-                    "SELECT id_product FROM stock WHERE name=%s AND type='final'",
-                    (final_name,))
-                if not id_final:
-                    return {'success': False, 'error': 'Final product not found'}
-
-                seen = set()
-                cols = ['id_final', 'quantity']   # ← base quantity column
-                vals = [id_final, 1]              # ← default = 1
-
-                for idx, ing in enumerate(ingredients[:5], start=1):
-                    mat_id = self._fetchone_scalar(
-                        "SELECT id_product FROM stock WHERE name=%s AND type<>'final'",
-                        (ing['name'],))
-                    if not mat_id:
-                        raise ValueError(f"Ingredient not found: {ing['name']}")
-                    if mat_id in seen:
-                        raise ValueError(f"Ingredient duplicated: {ing['name']}")
-                    seen.add(mat_id)
-
-                    cols += [f"id_material{idx}", f"quantity_material{idx}"]
-                    vals += [mat_id, ing['quantity']]
-
-                # pad unused slots ---------------------------------------
-                for idx in range(len(ingredients)+1, 6):
-                    cols += [f"id_material{idx}", f"quantity_material{idx}"]
-                    vals += [None, None]
-
-                sql = f"INSERT INTO recipes ({', '.join(cols)}) VALUES ({', '.join(['%s']*len(vals))})"
-                self.cursor.execute(sql, tuple(vals))
-
-            return {'success': True, 'recipe_id': id_final}
-
-        except Exception as e:
-            self.connection.rollback()          # ensure clean state
-            return {'success': False, 'error': str(e)}
-
-    # ---------- PARTNER order helpers ----------------
-    def get_partner_orders_by_partner(self, partner_id: int):
-        """Return partner_orders rows for one partner_id (latest first)."""
-        self.cursor.execute(
-            "SELECT * FROM partner_orders WHERE id_partner=%s ORDER BY data DESC",
-            (partner_id,))
-        return self.cursor.fetchall()
-
-    def update_partner_order_status(self, partner_id: int,
-                                    order_id: int, new_status: str):
-        allowed = {'pending', 'processing', 'completed', 'cancelled'}
-        if new_status not in allowed:
-            return {'error': 'Status invalid'}
-
-        # read current order
-        self.cursor.execute(
-            "SELECT status FROM partner_orders "
-            "WHERE id_order=%s AND id_partner=%s",
-            (order_id, partner_id)
-        )
-        row = self.cursor.fetchone()
-        if not row:
-            return {'error': 'Comandă inexistentă'}
-        if row['status'] == new_status:
-            return {'success': True}
-
-        try:
-            with self.connection:
-                self.cursor.execute(
-                    "UPDATE partner_orders SET status=%s WHERE id_order=%s",
-                    (new_status, order_id)
-                )
-            return {'success': True}
+            return {"success": True}
         except Exception as exc:
             self.connection.rollback()
-            return {'error': str(exc)}
+            return {"error": str(exc)}
 
+    def get_employee_id(self, username: str) -> int | None:
+        return self._fetchone_scalar(
+            "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
+            (username,), key="id"
+        )
+
+    def get_orders_by_employee(self, emp_id: int):
+        self.cursor.execute(
+            "SELECT * FROM orders "
+            "WHERE id_employee=%s "
+            "ORDER BY data DESC",
+            (emp_id,)
+        )
+        return self.cursor.fetchall()
+
+    def get_order_items(self, order_id: int):
+        self.cursor.execute(
+            """
+            SELECT s.name, oc.quantity, oc.price
+            FROM order_content oc
+            JOIN stock s ON s.id_product = oc.id_product
+            WHERE oc.id_order = %s
+            """,
+            (order_id,)
+        )
+        return self.cursor.fetchall()
+
+    def update_order_status(self, emp_username: str, order_id: int, status: str) -> dict:
+        emp_id = self.get_employee_id(emp_username)
+        if emp_id is None:
+            return {"error": "Angajat inexistent"}
+        self.cursor.execute(
+            "UPDATE orders SET progress=%s "
+            "WHERE id_order=%s AND id_employee=%s",
+            (status, order_id, emp_id)
+        )
+        if self.cursor.rowcount == 0:
+            self.connection.rollback()
+            return {"error": "Comanda inexistentă sau nu vă aparține"}
+        self.connection.commit()
+        return {"success": True}
+
+    def add_recipe(self, final_name: str, ingredients: list[dict]) -> dict:
+        id_final = self._fetchone_scalar(
+            "SELECT id_product FROM stock "
+            "WHERE LOWER(name)=LOWER(%s) AND type='final'",
+            (final_name,), key="id_product"
+        )
+        if id_final is None:
+            return {"error": "Produs final inexistent în stock"}
+        if not ingredients or len(ingredients) > 5:
+            return {"error": "Ingrediente trebuie 1-5 articole"}
+        mats: list[tuple[int, int]] = []
+        for item in ingredients:
+            nm = item.get("name", "").strip()
+            qty = item.get("quantity", 0)
+            if not nm or qty < 1:
+                return {"error": f"Ingredient invalid: {item}"}
+            mid = self._fetchone_scalar(
+                "SELECT id_product FROM stock "
+                "WHERE LOWER(name)=LOWER(%s) AND type<>'final'",
+                (nm,), key="id_product"
+            )
+            if mid is None:
+                return {"error": f"Materie primă inexistentă: {nm}"}
+            mats.append((mid, qty))
+        while len(mats) < 5:
+            mats.append((None, None))
+        try:
+            with self.connection:
+                self.cursor.execute("""
+                    INSERT INTO recipes (
+                        id_final, quantity,
+                        id_material1, quantity_material1,
+                        id_material2, quantity_material2,
+                        id_material3, quantity_material3,
+                        id_material4, quantity_material4,
+                        id_material5, quantity_material5
+                    ) VALUES (%s,1,
+                              %s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    id_final,
+                    *sum(([mid, qty] for mid, qty in mats), [])
+                ))
+            self.connection.commit()
+            return {"success": True}
+        except Exception as exc:
+            self.connection.rollback()
+            return {"error": str(exc)}
