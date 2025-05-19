@@ -15,11 +15,11 @@ body {
 .navbar .nav-right {
   display: flex;
   align-items: center;
-  gap: 10px;              /* equal spacing between items */
+  gap: 10px;
 }
 
 .navbar .nav-right {
-  margin-left: auto;      /* push right group to far right */
+  margin-left: auto;
 }
 
 .navbar a,
@@ -36,16 +36,14 @@ body {
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* remove now-redundant auto margin on .signin-btn */
 .signin-btn {
   margin-left: 0;
 }
 
 .navbar .signup-btn {
-  margin-left: 10px; /* keep small gap between them */
+  margin-left: 10px;
 }
 
-/* buttons */
 .btn {
   padding: 8px 16px;
   border: none;
@@ -72,7 +70,6 @@ body {
   background-color: #5a6268;
 }
 
-/* login form */
 .login-container {
   max-width: 400px;
   margin: 80px auto;
@@ -95,7 +92,6 @@ body {
   border-radius: 4px;
 }
 
-/* product listing */
 .product-list {
   display: flex;
   flex-wrap: wrap;
@@ -133,7 +129,6 @@ body {
   flex: 1;
 }
 
-/* popup */
 .popup {
   position: fixed;
   top: 0;
@@ -188,7 +183,6 @@ body {
   margin-top: 8px;
 }
 
-/* welcome banner */
 .welcome-banner {
   background: #28a745;
   color: #fff;
@@ -198,12 +192,10 @@ body {
   font-weight: bold;
 }
 
-/* main container */
 .main-container {
   max-width: 960px;
   margin: 20px auto;
-  /*  NEW: give interior breathing space  */
-  padding: 25px 15px;   /* ↑↓  left-right */
+  padding: 25px 15px;
   background: #fff;
   border-radius: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
@@ -219,7 +211,6 @@ body {
   margin-top: 16px;
 }
 
-/* dropdown */
 .dropdown {
   position: relative;
   display: inline-block;
@@ -248,7 +239,6 @@ body {
   overflow: hidden;
 }
 
-/* keep menu open when hovering button OR menu itself */
 .dropdown:hover .dropdown-content,
 .dropdown-content:hover {
   display: block;
@@ -272,13 +262,12 @@ body {
   border-radius: 4px;
 }
 
-/* header bar (title + button) */
 .header-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px; /* already had bottom margin */
-  margin-top: 10px; /* NEW – air above the bar */
+  margin-bottom: 20px;
+  margin-top: 10px;
 }
 
 .header-bar h1 {
@@ -286,7 +275,6 @@ body {
   font-size: 1.6rem;
 }
 
-/* loading spinner */
 .spinner {
   width: 48px;
   height: 48px;
@@ -303,9 +291,8 @@ body {
   }
 }
 
-/* ---------- Production / recipe cards ---------- */
 .recipe-card ul {
-  margin: 8px 0 0 16px;   /* indent nicely under title */
+  margin: 8px 0 0 16px;
   padding: 0;
 }
 .recipe-card ul li {
@@ -319,9 +306,6 @@ body {
   gap: 8px;
 }
 
-/* --------------------------------------------------
-   TABLES (orders, sales etc.)
--------------------------------------------------- */
 .orders-table {
   width: 100%;
   border-collapse: collapse;
@@ -330,7 +314,7 @@ body {
 
 .orders-table th,
 .orders-table td {
-  padding: 12px 14px; /* a bit roomier */
+  padding: 12px 14px;
   vertical-align: middle;
 }
 
@@ -349,15 +333,13 @@ body {
   background: #f8f9fa;
 }
 
-/* nicer spacing for first / last row */
 .orders-table tbody tr:first-child td,
 .orders-table tbody tr:last-child td {
   padding-top: 12px;
-  padding-bottom: 16px; /* extra breathing space */
-  border-bottom: 1px solid #dee2e6; /* visible closing line */
+  padding-bottom: 16px;
+  border-bottom: 1px solid #dee2e6;
 }
 
-/* numeric-cells centre */
 .orders-table td:nth-child(3),
 .orders-table td:nth-child(4),
 .orders-table td:nth-child(5) {
@@ -371,7 +353,6 @@ body {
   margin-left: 4px;
 }
 
-/* wrapper for bottom buttons under tables */
 .table-actions {
   margin: 24px 0 8px;
   text-align: right;
@@ -380,9 +361,6 @@ body {
   margin-left: 10px;
 }
 
-/* --------------------------------------------------
-   PROFILE LIST
--------------------------------------------------- */
 .profile-list {
   list-style: none;
   padding: 0;
@@ -394,25 +372,16 @@ body {
   border-bottom: 1px solid #e9ecef;
 }
 
-/* --------------------------------------------------
-   FORM ERROR MESSAGE
--------------------------------------------------- */
 .error {
   color: #dc3545;
   text-align: center;
   margin-bottom: 10px;
 }
 
-/* --------------------------------------------------
-   GLOBAL SPACING TWEAKS
--------------------------------------------------- */
 .btn + .btn {
   margin-left: 8px;
 }
 
-/* --------------------------------------------------
-   RESPONSIVE LAYOUT
--------------------------------------------------- */
 @media (max-width: 768px) {
   .product-card {
     flex: 1 1 100%;
