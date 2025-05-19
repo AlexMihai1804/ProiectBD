@@ -79,11 +79,34 @@ body {
   z-index: 100;
   display: flex;
   align-items: center;
+  justify-content: center; /* Center all content horizontally */
   padding: 0.75rem 1rem;
   background: var(--clr-primary);
   color: #fff;
   box-shadow: var(--shadow-sm);
 }
+
+.navbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.navbar-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
 .navbar a,
 .navbar .btn,
 .navbar .dropbtn {

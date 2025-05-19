@@ -11,11 +11,15 @@
 <body>
   {% include '_navbar.html' %}
   <div class="main-container">
-    <h2>Comenzile tale către magazin</h2>
-    <table id="tbl" class="orders-table">
-      <thead><tr><th>ID</th><th>Data</th><th>Status</th><th>Acțiune</th></tr></thead>
-      <tbody><tr><td colspan="4" style="text-align:center">Loading…</td></tr></tbody>
-    </table>
+    <div class="header-bar" style="justify-content: center;">
+      <h1 style="text-align: center; width: 100%;">Comenzile tale către magazin</h1>
+    </div>
+    <div style="display: flex; justify-content: center; width: 100%;">
+      <table id="tbl" class="orders-table" style="width: 60%; min-width: 400px; max-width: 700px;">
+        <thead><tr><th>ID</th><th>Data</th><th>Status</th><th>Acțiune</th></tr></thead>
+        <tbody><tr><td colspan="4" style="text-align:center">Loading…</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
 {% raw %}
@@ -59,7 +63,7 @@ def build_row(o):
     btn = document.createElement("button")
     btn.textContent = "Salvează"
     btn.className = "btn btn-primary btn-sm"
-    btn.style.marginLeft = "8px"
+    btn.style.marginLeft = "25px"
 
     async def update(evt=None, oid=o["id_order"], select=sel):
         resp = await pyfetch(
