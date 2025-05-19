@@ -214,14 +214,23 @@ class Database:
             cursor_factory=psycopg2.extras.RealDictCursor
         )
 
-    def _fetchone_scalar(self, query, params=(), key=None):
-        # Execută o interogare și returnează un singur scalar sau None
+    # === new partner helpers ===
+    def get_partner_id(self, username: str):
+        """Returnează id-ul partenerului sau None."""
         with self._dict_cur() as cur:
-            cur.execute(query, params)
+            cur.execute(
+                "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
+                (username,))
             row = cur.fetchone()
-            if row is None:
-                return None
-            return row[key or list(row.keys())[0]]
+            return row["id_partner"] if row else None
+
+    def get_partner_name(self, pid: int):
+        """Returnează numele partenerului sau None."""
+        with self._dict_cur() as cur:
+            cur.execute("SELECT name FROM partners WHERE id_partner=%s", (pid,))
+            row = cur.fetchone()
+            return row["name"] if row else None
+    # ===========================
 
     def get_stock(self, final_only=True):
         # returnează toate produsele din stoc
@@ -329,20 +338,22 @@ class Database:
 
     def get_order_quantity(self, order_id):
         # Cantitatea totală dintr-o comandă.
-        q = self._fetchone_scalar(
-            "SELECT SUM(quantity) AS qty FROM order_content WHERE id_order = %s",
-            (order_id,),
-            "qty"
-        )
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT SUM(quantity) AS qty FROM order_content WHERE id_order = %s",
+                (order_id,))
+            row = cur.fetchone()
+            q = row["qty"] if row else None
         return q or 0
 
     def get_partner_order_quantity(self, order_id):
         # Cantitatea totală dintr-o comandă către partener.
-        q = self._fetchone_scalar(
-            "SELECT SUM(quantity) AS qty FROM partner_order_content WHERE id_order = %s",
-            (order_id,),
-            "qty"
-        )
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT SUM(quantity) AS qty FROM partner_order_content WHERE id_order = %s",
+                (order_id,))
+            row = cur.fetchone()
+            q = row["qty"] if row else None
         return q or 0
 
     def verify_customer(self, username, password):
@@ -429,11 +440,12 @@ class Database:
 
     def get_customer_id(self, username):
         # id-ul clientului cu un anumit username.
-        return self._fetchone_scalar(
-            "SELECT id_customer FROM customers WHERE LOWER(username)=LOWER(%s)",
-            (username,),
-            key="id_customer"
-        )
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT id_customer FROM customers WHERE LOWER(username)=LOWER(%s)",
+                (username,))
+            row = cur.fetchone()
+            return row['id_customer'] if row else None
 
     def create_customer(self, name, surname, username, password, email, address='', phone_number=''):
         # adaugă un client în baza de date.
@@ -474,175 +486,194 @@ class Database:
     def generate_dummy_data(self):
         # adaugă date de test în baza de date.
         try:
-            if self._fetchone_scalar("SELECT COUNT(*) FROM employees") == 0:
-                employees = [
-                    ("Ion", "Popescu", "sales", 3500.00, "ion@example.com", "0712345678", "Str. A, Nr.1", "ionp",
-                     "pass123"),
-                    ("Maria", "Ionescu", "sales", 3600.00, "maria@example.com", "0723456789", "Str. B, Nr.2", "mariai",
-                     "pass123"),
+            with self._dict_cur() as cur:
+                cur.execute("SELECT COUNT(*) AS cnt FROM employees")
+                if cur.fetchone()['cnt'] == 0:
+                    employees = [
+                        ("Ion", "Popescu", "sales", 3500.00, "ion@example.com", "0712345678", "Str. A, Nr.1", "ionp",
+                         "pass123"),
+                        ("Maria", "Ionescu", "sales", 3600.00, "maria@example.com", "0723456789", "Str. B, Nr.2", "mariai",
+                         "pass123"),
+                    ]
+                    self.cursor.executemany(
+                        "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        employees
+                    )
+                achizitii = [
+                    (
+                        "George", "Enache", "achizitii", 3400.00, "george@ex.com", "0731231231", "Str. C 3", "geoe",
+                        "pass123"),
+                    ("Ana", "Popa", "achizitii", 3450.00, "ana.p@ex.com", "0743213213", "Str. D 4", "anap", "pass123")
                 ]
                 self.cursor.executemany(
                     "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                    employees
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (username) DO NOTHING",
+                    achizitii
                 )
-            achizitii = [
-                (
-                    "George", "Enache", "achizitii", 3400.00, "george@ex.com", "0731231231", "Str. C 3", "geoe",
-                    "pass123"),
-                ("Ana", "Popa", "achizitii", 3450.00, "ana.p@ex.com", "0743213213", "Str. D 4", "anap", "pass123")
-            ]
-            self.cursor.executemany(
-                "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT (username) DO NOTHING",
-                achizitii
-            )
-            productie = [
-                ("Calin", "Poenaru", "productie", 4000.00, "calin@ex.com", "0736231231", "Str. C 3", "calin_p",
-                 "pass123"),
-                ("Sana", "Alexa", "productie", 4050.00, "sana@ex.com", "0745213213", "Str. D 4", "sana_a", "pass123")
-            ]
-            self.cursor.executemany(
-                "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT (username) DO NOTHING",
-                productie
-            )
-            if self._fetchone_scalar("SELECT COUNT(*) FROM customers") == 0:
-                customers = [
-                    ("Andrei", "Georgescu", "andreg", "pass123", "andrei@example.com", "Bd X 10", "0730000000"),
-                    ("Elena", "Marinescu", "elenam", "pass123", "elena@example.com", "Str Y 20", "0740000000")
+                productie = [
+                    ("Calin", "Poenaru", "productie", 4000.00, "calin@ex.com", "0736231231", "Str. C 3", "calin_p",
+                     "pass123"),
+                    ("Sana", "Alexa", "productie", 4050.00, "sana@ex.com", "0745213213", "Str. D 4", "sana_a", "pass123")
                 ]
                 self.cursor.executemany(
-                    "INSERT INTO customers (name,surname,username,password,email,address,phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                    customers
+                    "INSERT INTO employees (name,surname,department,salary,email,phone_number,address,username,password) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (username) DO NOTHING",
+                    productie
                 )
-            if self._fetchone_scalar("SELECT COUNT(*) FROM stock") == 0:
-                products = [
-                    ("Cola 0.5 L", 2.50, "Băutură răcoritoare", 100, "final"),
-                    ("Cola 1 L", 4.00, "Băutură răcoritoare", 80, "final"),
-                    ("Orange Soda 0.5 L", 2.50, "Suc portocale carbog.", 120, "final"),
-                    ("Lemonade 0.5 L", 2.20, "Limonadă carbog.", 90, "final"),
-                    ("Apă carbogazoasă", 0.20, "Materie primă", 1000, "materie"),
-                    ("Zahăr", 0.10, "Materie primă", 800, "materie"),
-                    ("CO₂", 0.05, "Dioxid de carbon", 2000, "materie"),
-                    ("Colorant caramel", 0.15, "Aditiv", 300, "materie"),
-                    ("Acid fosforic", 0.08, "Aditiv", 300, "materie"),
-                    ("Cofeină", 0.12, "Aditiv", 200, "materie"),
-                    ("Aromă portocale", 0.14, "Aromă", 400, "materie"),
-                    ("Aromă lămâie", 0.14, "Aromă", 400, "materie"),
-                    ("PET 0.5 L", 0.30, "Sticlă plastic", 1000, "materie"),
-                    ("PET 1 L", 0.35, "Sticlă plastic", 800, "materie"),
-                    ("Capac PET", 0.05, "Capac sticlă", 1800, "materie"),
-                    ("Etichetă", 0.04, "Etichetă autoadez.", 2000, "materie"),
-                ]
-                self.cursor.executemany(
-                    "INSERT INTO stock (name,price,description,quantity,type) "
-                    "VALUES (%s,%s,%s,%s,%s) "
-                    "ON CONFLICT (name) DO NOTHING",
-                    products
-                )
-            if self._fetchone_scalar("SELECT COUNT(*) FROM partners") == 0:
-                partners = [
-                    ("Furnizor Ambalaje",  "bottlesupp", "pass123", "Str. Ambalaje 1", "0751000001", "bottle@sup.ro"),
-                    ("Furnizor Ingrediente","ingsupp",   "pass123", "Str. Ingred  2", "0752000002", "ing@sup.ro"),
-                ]
-                self.cursor.executemany(
-                    "INSERT INTO partners (name,username,password,address,phone_number,email) "
-                    "VALUES (%s,%s,%s,%s,%s,%s)",
-                    partners
-                )
-            if self._fetchone_scalar("SELECT COUNT(*) FROM partner_products") == 0:
-                self.cursor.execute("SELECT id_product, name FROM stock")
-                id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
-                self.cursor.execute("SELECT id_partner, username FROM partners")
-                pid_by_user = {r['username']: r['id_partner'] for r in self.cursor.fetchall()}
-                partner_products = [
-                    (id_by_name["PET 0.5 L"], 0.32, 10000, pid_by_user["bottlesupp"]),
-                    (id_by_name["PET 1 L"], 0.37, 8000, pid_by_user["bottlesupp"]),
-                    (id_by_name["Capac PET"], 0.06, 15000, pid_by_user["bottlesupp"]),
-                    (id_by_name["Etichetă"], 0.045, 20000, pid_by_user["bottlesupp"]),
-                    (id_by_name["Zahăr"], 0.11, 5000, pid_by_user["ingsupp"]),
-                    (id_by_name["CO₂"], 0.055, 8000, pid_by_user["ingsupp"]),
-                    (id_by_name["Colorant caramel"], 0.17, 3000, pid_by_user["ingsupp"]),
-                    (id_by_name["Acid fosforic"], 0.09, 3000, pid_by_user["ingsupp"]),
-                    (id_by_name["Cofeină"], 0.13, 2000, pid_by_user["ingsupp"]),
-                    (id_by_name["Aromă portocale"], 0.15, 4000, pid_by_user["ingsupp"]),
-                    (id_by_name["Aromă lămâie"], 0.15, 4000, pid_by_user["ingsupp"]),
-                ]
-                self.cursor.executemany(
-                    "INSERT INTO partner_products (id_stock, price, quantity, id_partner) "
-                    "VALUES (%s,%s,%s,%s)",
-                    partner_products
-                )
-            if self._fetchone_scalar("SELECT COUNT(*) FROM recipes") == 0:
-                self.cursor.execute("SELECT id_product,name FROM stock")
-                id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
-                recipes_rows = [
-                    (id_by_name["Cola 0.5 L"], 1,
-                     id_by_name["Apă carbogazoasă"], 1,
-                     id_by_name["Zahăr"], 1,
-                     id_by_name["Colorant caramel"], 1,
-                     id_by_name["Acid fosforic"], 1,
-                     id_by_name["Cofeină"], 1),
-                    (id_by_name["Cola 1 L"], 1,
-                     id_by_name["Apă carbogazoasă"], 2,
-                     id_by_name["Zahăr"], 2,
-                     id_by_name["Colorant caramel"], 2,
-                     id_by_name["Acid fosforic"], 2,
-                     id_by_name["Cofeină"], 2),
-                    (id_by_name["Orange Soda 0.5 L"], 1,
-                     id_by_name["Apă carbogazoasă"], 1,
-                     id_by_name["Zahăr"], 1,
-                     id_by_name["Aromă portocale"], 1,
-                     None, None,
-                     None, None),
-                    (id_by_name["Lemonade 0.5 L"], 1,
-                     id_by_name["Apă carbogazoasă"], 1,
-                     id_by_name["Zahăr"], 1,
-                     id_by_name["Aromă lămâie"], 1,
-                     None, None,
-                     None, None),
-                ]
-                for (idf, qty,
-                     m1, q1, m2, q2, m3, q3,
-                     m4, q4, m5, q5) in recipes_rows:
-                    self.cursor.execute("""
-                        INSERT INTO recipes (id_final, quantity,
-                                             id_material1, quantity_material1,
-                                             id_material2, quantity_material2,
-                                             id_material3, quantity_material3,
-                                             id_material4, quantity_material4,
-                                             id_material5, quantity_material5)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (idf, qty,
-                          m1, q1, m2, q2, m3, q3,
-                          m4, q4, m5, q5))
-            if self._fetchone_scalar("SELECT COUNT(*) FROM orders") == 0:
-                cust = self._fetchone_scalar(
-                    "SELECT id_customer FROM customers LIMIT 1")
-                emp = self._fetchone_scalar(
-                    "SELECT id FROM employees WHERE department='sales' LIMIT 1")
-                now = datetime.utcnow()
-                self.cursor.execute("SELECT id_product,name,price FROM stock")
-                by_name = {r['name']: (r['id_product'], r['price'])
-                           for r in self.cursor.fetchall()}
-                order_items = [("Cola 0.5 L", 3), ("Orange Soda 0.5 L", 2)]
-                self.cursor.execute(
-                    "INSERT INTO orders (id_client,data,progress,id_employee) "
-                    "VALUES (%s,%s,'completed',%s) RETURNING id_order",
-                    (cust, now, emp))
-                oid = self.cursor.fetchone()['id_order']
-                for name, qty in order_items:
-                    pid, price = by_name.get(name, (None, None))
-                    if pid is None or price is None:
-                        continue
-                    self.cursor.execute(
-                        "INSERT INTO order_content "
-                        "(id_order, id_product, quantity, price) "
-                        "VALUES (%s,%s,%s,%s)",
-                        (oid, pid, qty, price))
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM customers")
+                    if cur.fetchone()["cnt"] == 0:
+                        customers = [
+                            ("Andrei", "Georgescu", "andreg", "pass123", "andrei@example.com", "Bd X 10", "0730000000"),
+                            ("Elena", "Marinescu", "elenam", "pass123", "elena@example.com", "Str Y 20", "0740000000")
+                        ]
+                        self.cursor.executemany(
+                            "INSERT INTO customers (name,surname,username,password,email,address,phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                            customers
+                        )
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM stock")
+                    if cur.fetchone()["cnt"] == 0:
+                        products = [
+                            ("Cola 0.5 L", 2.50, "Băutură răcoritoare", 100, "final"),
+                            ("Cola 1 L", 4.00, "Băutură răcoritoare", 80, "final"),
+                            ("Orange Soda 0.5 L", 2.50, "Suc portocale carbog.", 120, "final"),
+                            ("Lemonade 0.5 L", 2.20, "Limonadă carbog.", 90, "final"),
+                            ("Apă carbogazoasă", 0.20, "Materie primă", 1000, "materie"),
+                            ("Zahăr", 0.10, "Materie primă", 800, "materie"),
+                            ("CO₂", 0.05, "Dioxid de carbon", 2000, "materie"),
+                            ("Colorant caramel", 0.15, "Aditiv", 300, "materie"),
+                            ("Acid fosforic", 0.08, "Aditiv", 300, "materie"),
+                            ("Cofeină", 0.12, "Aditiv", 200, "materie"),
+                            ("Aromă portocale", 0.14, "Aromă", 400, "materie"),
+                            ("Aromă lămâie", 0.14, "Aromă", 400, "materie"),
+                            ("PET 0.5 L", 0.30, "Sticlă plastic", 1000, "materie"),
+                            ("PET 1 L", 0.35, "Sticlă plastic", 800, "materie"),
+                            ("Capac PET", 0.05, "Capac sticlă", 1800, "materie"),
+                            ("Etichetă", 0.04, "Etichetă autoadez.", 2000, "materie"),
+                        ]
+                        self.cursor.executemany(
+                            "INSERT INTO stock (name,price,description,quantity,type) "
+                            "VALUES (%s,%s,%s,%s,%s) "
+                            "ON CONFLICT (name) DO NOTHING",
+                            products
+                        )
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM partners")
+                    if cur.fetchone()["cnt"] == 0:
+                        partners = [
+                            ("Furnizor Ambalaje",  "bottlesupp", "pass123", "Str. Ambalaje 1", "0751000001", "bottle@sup.ro"),
+                            ("Furnizor Ingrediente","ingsupp",   "pass123", "Str. Ingred  2", "0752000002", "ing@sup.ro"),
+                        ]
+                        self.cursor.executemany(
+                            "INSERT INTO partners (name,username,password,address,phone_number,email) "
+                            "VALUES (%s,%s,%s,%s,%s,%s)",
+                            partners
+                        )
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM partner_products")
+                    if cur.fetchone()["cnt"] == 0:
+                        self.cursor.execute("SELECT id_product, name FROM stock")
+                        id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
+                        self.cursor.execute("SELECT id_partner, username FROM partners")
+                        pid_by_user = {r['username']: r['id_partner'] for r in self.cursor.fetchall()}
+                        partner_products = [
+                            (id_by_name["PET 0.5 L"], 0.32, 10000, pid_by_user["bottlesupp"]),
+                            (id_by_name["PET 1 L"], 0.37, 8000, pid_by_user["bottlesupp"]),
+                            (id_by_name["Capac PET"], 0.06, 15000, pid_by_user["bottlesupp"]),
+                            (id_by_name["Etichetă"], 0.045, 20000, pid_by_user["bottlesupp"]),
+                            (id_by_name["Zahăr"], 0.11, 5000, pid_by_user["ingsupp"]),
+                            (id_by_name["CO₂"], 0.055, 8000, pid_by_user["ingsupp"]),
+                            (id_by_name["Colorant caramel"], 0.17, 3000, pid_by_user["ingsupp"]),
+                            (id_by_name["Acid fosforic"], 0.09, 3000, pid_by_user["ingsupp"]),
+                            (id_by_name["Cofeină"], 0.13, 2000, pid_by_user["ingsupp"]),
+                            (id_by_name["Aromă portocale"], 0.15, 4000, pid_by_user["ingsupp"]),
+                            (id_by_name["Aromă lămâie"], 0.15, 4000, pid_by_user["ingsupp"]),
+                        ]
+                        self.cursor.executemany(
+                            "INSERT INTO partner_products (id_stock, price, quantity, id_partner) "
+                            "VALUES (%s,%s,%s,%s)",
+                            partner_products
+                        )
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM recipes")
+                    if cur.fetchone()["cnt"] == 0:
+                        self.cursor.execute("SELECT id_product,name FROM stock")
+                        id_by_name = {r['name']: r['id_product'] for r in self.cursor.fetchall()}
+                        recipes_rows = [
+                            (id_by_name["Cola 0.5 L"], 1,
+                             id_by_name["Apă carbogazoasă"], 1,
+                             id_by_name["Zahăr"], 1,
+                             id_by_name["Colorant caramel"], 1,
+                             id_by_name["Acid fosforic"], 1,
+                             id_by_name["Cofeină"], 1),
+                            (id_by_name["Cola 1 L"], 1,
+                             id_by_name["Apă carbogazoasă"], 2,
+                             id_by_name["Zahăr"], 2,
+                             id_by_name["Colorant caramel"], 2,
+                             id_by_name["Acid fosforic"], 2,
+                             id_by_name["Cofeină"], 2),
+                            (id_by_name["Orange Soda 0.5 L"], 1,
+                             id_by_name["Apă carbogazoasă"], 1,
+                             id_by_name["Zahăr"], 1,
+                             id_by_name["Aromă portocale"], 1,
+                             None, None,
+                             None, None),
+                            (id_by_name["Lemonade 0.5 L"], 1,
+                             id_by_name["Apă carbogazoasă"], 1,
+                             id_by_name["Zahăr"], 1,
+                             id_by_name["Aromă lămâie"], 1,
+                             None, None,
+                             None, None),
+                        ]
+                        for (idf, qty,
+                             m1, q1, m2, q2, m3, q3,
+                             m4, q4, m5, q5) in recipes_rows:
+                            self.cursor.execute("""
+                                INSERT INTO recipes (id_final, quantity,
+                                                     id_material1, quantity_material1,
+                                                     id_material2, quantity_material2,
+                                                     id_material3, quantity_material3,
+                                                     id_material4, quantity_material4,
+                                                     id_material5, quantity_material5)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            """, (idf, qty,
+                                  m1, q1, m2, q2, m3, q3,
+                                  m4, q4, m5, q5))
+                with self._dict_cur() as cur:
+                    cur.execute("SELECT COUNT(*) AS cnt FROM orders")
+                    if cur.fetchone()["cnt"] == 0:
+                        # id client & angajat vânzări
+                        cur.execute("SELECT id_customer FROM customers LIMIT 1")
+                        r1 = cur.fetchone()
+                        cust = r1["id_customer"] if r1 else None
+                        cur.execute(
+                            "SELECT id FROM employees "
+                            "WHERE department='sales' LIMIT 1")
+                        r2 = cur.fetchone()
+                        emp = r2["id"] if r2 else None
+                        now = datetime.utcnow()
+                        self.cursor.execute("SELECT id_product,name,price FROM stock")
+                        by_name = {r['name']: (r['id_product'], r['price'])
+                                   for r in self.cursor.fetchall()}
+                        order_items = [("Cola 0.5 L", 3), ("Orange Soda 0.5 L", 2)]
+                        self.cursor.execute(
+                            "INSERT INTO orders (id_client,data,progress,id_employee) "
+                            "VALUES (%s,%s,'completed',%s) RETURNING id_order",
+                            (cust, now, emp))
+                        oid = self.cursor.fetchone()['id_order']
+                        for name, qty in order_items:
+                            pid, price = by_name.get(name, (None, None))
+                            if pid is None or price is None:
+                                continue
+                            self.cursor.execute(
+                                "INSERT INTO order_content "
+                                "(id_order, id_product, quantity, price) "
+                                "VALUES (%s,%s,%s,%s)",
+                                (oid, pid, qty, price))
             self.connection.commit()
         except Exception as exc:
             import traceback, sys
@@ -717,9 +748,13 @@ class Database:
                     mat_qty = recipe.get(f"quantity_material{i}")
                     if mat_id and mat_qty:
                         need = mat_qty * quantity
-                        have = self._fetchone_scalar(
-                            "SELECT quantity FROM stock WHERE id_product=%s",
-                            (mat_id,), key="quantity")
+                        have = None
+                        with self._dict_cur() as qc:
+                            qc.execute(
+                                "SELECT quantity FROM stock WHERE id_product=%s",
+                                (mat_id,))
+                            row = qc.fetchone()
+                            have = row["quantity"] if row else None
                         if have is None or have < need:
                             raise ValueError("Insufficient stock for material")
                         self.cursor.execute(
@@ -756,11 +791,12 @@ class Database:
 
     def get_employee_id(self, username):
         # id-ul angajatului cu un anumit username.
-        return self._fetchone_scalar(
-            "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
-            (username,),
-            key="id"
-        )
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT id FROM employees WHERE LOWER(username)=LOWER(%s)",
+                (username,))
+            row = cur.fetchone()
+            return row['id'] if row else None
 
     def get_orders_by_employee(self, emp_id):
         # Comenzile unui angajat dat.
@@ -803,11 +839,13 @@ class Database:
 
     def add_recipe(self, final_name, ingredients):
         # Adaugă o rețetă în baza de date.
-        id_final = self._fetchone_scalar(
-            "SELECT id_product FROM stock "
-            "WHERE LOWER(name)=LOWER(%s) AND type='final'",
-            (final_name,), key="id_product"
-        )
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT id_product FROM stock "
+                "WHERE LOWER(name)=LOWER(%s) AND type='final'",
+                (final_name,))
+            r = cur.fetchone()
+            id_final = r['id_product'] if r else None
         if id_final is None:
             return {"error": "Produs final inexistent în stock"}
         if not ingredients or len(ingredients) > 5:
@@ -818,11 +856,13 @@ class Database:
             qty = item.get("quantity", 0)
             if not nm or qty < 1:
                 return {"error": f"Ingredient invalid: {item}"}
-            mid = self._fetchone_scalar(
-                "SELECT id_product FROM stock "
-                "WHERE LOWER(name)=LOWER(%s) AND type<>'final'",
-                (nm,), key="id_product"
-            )
+            with self._dict_cur() as _c:
+                _c.execute(
+                    "SELECT id_product FROM stock "
+                    "WHERE LOWER(name)=LOWER(%s) AND type<>'final'",
+                    (nm,))
+                _r = _c.fetchone()
+                mid = _r['id_product'] if _r else None
             if mid is None:
                 return {"error": f"Materie primă inexistentă: {nm}"}
             mats.append((mid, qty))
@@ -939,17 +979,11 @@ class Database:
         return {"success": True}
 
     def place_order(self, customer_id, items):
-        """
-        Creează o comandă nouă pentru clientul dat.
-        items: list[tuple[id_product:int, quantity:int]]
-        Returnează {'success': True, 'order_id': X} sau {'error': msg}.
-        """
+        # Plasează o comandă pentru un client dat.
         if not customer_id:
             return {"error": "Client invalid"}
         if not items:
             return {"error": "Lista de produse este goală"}
-
-        # Validare elemente
         try:
             clean_items = [
                 (int(pid), int(qty))
@@ -958,36 +992,34 @@ class Database:
             ]
         except Exception:
             return {"error": "Date produse invalide"}
-
         if not clean_items:
             return {"error": "Cantități invalide"}
-
-        # Angajat vânzări care va prelua comanda
-        emp_id = self._fetchone_scalar(
-            "SELECT id FROM employees WHERE department='sales' ORDER BY id LIMIT 1",
-            (), key="id"
-        )
+        emp_id = None
+        with self._dict_cur() as cur:
+            cur.execute(
+                "SELECT id FROM employees WHERE department='sales' "
+                "ORDER BY id LIMIT 1")
+            row = cur.fetchone()
+            emp_id = row["id"] if row else None
         if emp_id is None:
             return {"error": "Nu există angajați vânzări"}
-
         try:
             from datetime import datetime
             now = datetime.utcnow()
             with self.connection:
-                # Inserare comandă
                 self.cursor.execute(
                     "INSERT INTO orders (id_client,data,progress,id_employee) "
                     "VALUES (%s,%s,'pending',%s) RETURNING id_order",
                     (customer_id, now, emp_id)
                 )
                 oid = self.cursor.fetchone()["id_order"]
-
-                # Inserare articole
                 for pid, qty in clean_items:
-                    price = self._fetchone_scalar(
-                        "SELECT price FROM stock WHERE id_product=%s",
-                        (pid,), key="price"
-                    )
+                    price = None
+                    with self._dict_cur() as pcur:
+                        pcur.execute("SELECT price FROM stock WHERE id_product=%s",
+                                     (pid,))
+                        prow = pcur.fetchone()
+                        price = prow["price"] if prow else None
                     if price is None:
                         raise ValueError(f"Produs inexistent ID {pid}")
                     self.cursor.execute(

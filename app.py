@@ -74,9 +74,7 @@ def achizitii_order_detail(order_id: int):
     if not order:
         return "Order not found or not assigned to you", 404
     items = database.get_partner_order_items(order_id)
-    partner = database._fetchone_scalar(
-        "SELECT name FROM partners WHERE id_partner=%s",
-        (order['id_partner'],))
+    partner = database.get_partner_name(order['id_partner'])
     order['date_fmt'] = order['data'].strftime('%Y-%m-%d %H:%M')
     return render_template('employees_achizitii_order.html', order=order, items=items, partner=partner)
 
@@ -239,9 +237,7 @@ def api_achizitii_my_orders():
         if o['id_employee'] != eid:
             continue
         o['date_fmt'] = o['data'].strftime('%Y-%m-%d %H:%M')
-        o['partner'] = database._fetchone_scalar(
-            "SELECT name FROM partners WHERE id_partner=%s",
-            (o['id_partner'],))
+        o['partner'] = database.get_partner_name(o['id_partner'])
         out.append(o)
     return jsonify(out)
 
@@ -259,11 +255,7 @@ def api_place_order():
 def partners_page():
     if 'partner' not in session:
         return redirect(url_for('partner_login'))
-    partner_id = database._fetchone_scalar(
-        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
-        (session['partner'],),
-        key='id_partner'
-    )
+    partner_id = database.get_partner_id(session['partner'])
     if not partner_id:
         return "Partener inexistent", 404
     return render_template('partners.html', partner_id=partner_id)
@@ -538,9 +530,7 @@ def api_create_recipe():
 def partner_orders_page():
     if 'partner' not in session:
         return redirect(url_for('partner_login'))
-    partner_id = database._fetchone_scalar(
-        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
-        (session['partner'],), key='id_partner')
+    partner_id = database.get_partner_id(session['partner'])
     if not partner_id:
         return "Partener inexistent", 404
     return render_template('partner_orders.html', partner_id=partner_id)
@@ -550,9 +540,7 @@ def partner_orders_page():
 def api_partner_my_orders():
     if 'partner' not in session:
         return jsonify({'error': 'Not authorized'}), 403
-    pid = database._fetchone_scalar(
-        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
-        (session['partner'],), key='id_partner')
+    pid = database.get_partner_id(session['partner'])
     data = database.get_partner_orders_by_partner(pid)
     for r in data:
         r['date_fmt'] = r['data'].strftime('%Y-%m-%d %H:%M')
@@ -564,9 +552,7 @@ def api_partner_update_order():
     if 'partner' not in session:
         return jsonify({'error': 'Not authorized'}), 403
     payload = request.get_json() or {}
-    pid = database._fetchone_scalar(
-        "SELECT id_partner FROM partners WHERE LOWER(username)=LOWER(%s)",
-        (session['partner'],), key='id_partner')
+    pid = database.get_partner_id(session['partner'])
     res = database.update_partner_order_status(
         pid,
         payload.get('order_id'),
