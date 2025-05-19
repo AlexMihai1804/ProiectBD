@@ -515,8 +515,8 @@ class Database:
             )
             if self._fetchone_scalar("SELECT COUNT(*) FROM customers") == 0:
                 customers = [
-                    ("Andrei", "Georgescu", "andreg", "pwd1", "andrei@example.com", "Bd X 10", "0730000000"),
-                    ("Elena", "Marinescu", "elenam", "pwd2", "elena@example.com", "Str Y 20", "0740000000")
+                    ("Andrei", "Georgescu", "andreg", "pass123", "andrei@example.com", "Bd X 10", "0730000000"),
+                    ("Elena", "Marinescu", "elenam", "pass123", "elena@example.com", "Str Y 20", "0740000000")
                 ]
                 self.cursor.executemany(
                     "INSERT INTO customers (name,surname,username,password,email,address,phone_number) VALUES (%s,%s,%s,%s,%s,%s,%s)",
@@ -549,8 +549,8 @@ class Database:
                 )
             if self._fetchone_scalar("SELECT COUNT(*) FROM partners") == 0:
                 partners = [
-                    ("Furnizor Ambalaje", "bottlesupp", "pwdbs", "Str. Ambalaje 1", "0751000001", "bottle@sup.ro"),
-                    ("Furnizor Ingrediente", "ingsupp", "pwdin", "Str. Ingred  2", "0752000002", "ing@sup.ro"),
+                    ("Furnizor Ambalaje",  "bottlesupp", "pass123", "Str. Ambalaje 1", "0751000001", "bottle@sup.ro"),
+                    ("Furnizor Ingrediente","ingsupp",   "pass123", "Str. Ingred  2", "0752000002", "ing@sup.ro"),
                 ]
                 self.cursor.executemany(
                     "INSERT INTO partners (name,username,password,address,phone_number,email) "
@@ -678,9 +678,16 @@ class Database:
         try:
             with self.connection:
                 for item in price_list:
-                    pid = item["id_product"]
+                    pid   = item["id_product"]
                     price = item["price"]
-                    updated = self.cursor.execute(
+                    if price <= 0:
+                        self.cursor.execute(
+                            "DELETE FROM partner_products "
+                            "WHERE id_stock=%s AND id_partner=%s",
+                            (pid, partner_id)
+                        )
+                        continue
+                    self.cursor.execute(
                         "UPDATE partner_products "
                         "SET price=%s "
                         "WHERE id_stock=%s AND id_partner=%s",

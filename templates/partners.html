@@ -89,8 +89,8 @@ async def save_prices(evt):
         try:
             p = float(inp.value)
         except:
-            continue
-        if p > 0:
+            p = -1
+        if p >= 0:
             items.append({"id_product": int(chk.dataset.id), "price": p})
 
     if not items:
